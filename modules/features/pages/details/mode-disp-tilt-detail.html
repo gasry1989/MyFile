@@ -1,0 +1,150 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8"/>
+  <title>位移·倾角模式详情(调试版)</title>
+  <script type="importmap">
+  {
+    "imports": {
+      "@config/": "/config/",
+      "@core/": "/modules/core/",
+      "@api/": "/modules/api/",
+      "@state/": "/modules/state/",
+      "@features/": "/modules/features/",
+      "@ui/": "/modules/ui/",
+      "@utils/": "/modules/utils/",
+      "@layout/": "/modules/layout/"
+    }
+  }
+  </script>
+  <style>
+    html,body{height:100%;margin:0;background:#000;color:#e6f0ff;font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial;overflow:hidden;}
+    *{box-sizing:border-box;}
+    .wrap{position:absolute;inset:48px 0 0 0;background:#000;overflow:hidden;}
+    .spinner{position:absolute;top:6px;right:8px;width:22px;height:22px;border:3px solid #2a5b8a;border-top-color:#9ec3ff;border-radius:50%;animation:spin .8s linear infinite;display:none;}
+    @keyframes spin{to{transform:rotate(360deg)}}
+    .refresh-btn{position:absolute;top:6px;right:40px;width:24px;height:24px;background:#123;color:#9ec3ff;border:1px solid #345;border-radius:4px;font-size:14px;display:none;align-items:center;justify-content:center;cursor:pointer;}
+    .suspended .grid,.suspended .leftControls{pointer-events:none;filter:grayscale(.55) brightness(.85);}
+    .suspended .refresh-btn{pointer-events:auto;}
+    .probe-row{display:grid;grid-template-columns:50px 50px 60px 70px 60px 1fr;align-items:center;gap:8px;padding:6px 8px;border:1px solid #2ea6a6;border-radius:6px;cursor:pointer;font-size:12px;}
+    .probe-row.selected{outline:2px solid #48c2ff;}
+    .wave{height:12px;display:block;object-fit:contain;margin-left:4px;}
+    .value-box{display:flex;align-items:center;gap:4px;font-weight:700;}
+    .gas-row{display:flex;align-items:center;gap:6px;margin:4px 0;}
+    .gas-row .val{display:inline-flex;align-items:center;padding:2px 8px;min-width:110px;min-height:26px;border:1px solid transparent;border-radius:4px;cursor:pointer;}
+    .gas-row .val:hover{background:#08161d;border-color:#2ea6a6;}
+    .gas-row .val.alarm{color:#ff6b6b;}
+    .gas-row .gas-unit{margin-left:4px;color:#e6f0ff;}
+    .log-box{flex:1;overflow:auto;border:1px solid #2ea6a6;border-radius:6px;padding:6px;font-size:12px;line-height:1.4;background:#020405;min-height:160px;}
+    .log-item{padding:2px 0;border-bottom:1px solid rgba(255,255,255,.08);}
+    .log-footer{padding:6px 0 0 0;text-align:center;}
+    .log-more-btn{background:#1f7fb8;color:#fff;border:1px solid #2ea6a6;border-radius:4px;padding:4px 14px;font-size:12px;cursor:pointer;}
+    .log-end{color:#678;font-size:12px;}
+    .log-box::-webkit-scrollbar{width:8px;}
+    .log-box::-webkit-scrollbar-track{background:#081016;border-radius:4px;}
+    .log-box::-webkit-scrollbar-thumb{background:#1e4058;border-radius:4px;border:1px solid #2ea6a6;}
+    .log-box::-webkit-scrollbar-thumb:hover{background:#2a5f7d;}
+    .log-box{scrollbar-width:thin;scrollbar-color:#1e4058 #081016;}
+    .flex{display:flex;}
+    .gap8{gap:8px;}
+    .btnMini{background:#1f7fb8;border:1px solid rgba(255,255,255,.25);color:#fff;border-radius:4px;padding:4px 10px;cursor:pointer;font-size:12px;font-weight:600;}
+    .btnMini.outline{background:transparent;}
+    .th-box{display:flex;align-items:center;gap:8px;}
+    .th-box .arrow{cursor:pointer;font-size:20px;user-select:none;}
+    .th-val{min-width:70px;text-align:center;font-weight:700;}
+    .icon-btn-img{display:inline-flex;align-items:center;justify-content:center;width:100%;height:54px;border:none;background:transparent;cursor:pointer;padding:0;}
+    .icon-btn-img img{width:34px;height:34px;display:block;}
+    .leftControls{display:flex;width:100%;gap:0;}
+    .leftControls .icon-btn-img{flex:1;border:1px solid #2ea6a6;border-right:none;}
+    .leftControls .icon-btn-img:last-child{border-right:1px solid #2ea6a6;}
+    .leftControls .icon-btn-img.active{background:#072630;}
+    .detail-icons-bar{display:flex;justify-content:center;align-items:center;gap:72px;margin:10px 0 14px 0;}
+    .detail-icons-bar .icon-btn-img{width:70px;height:70px;border:1px solid #2ea6a6;border-radius:6px;}
+    .detail-icons-bar .icon-btn-img.active{background:#072630;}
+    .disp-lines{margin:4px 0 8px 0;font-size:13px;line-height:1.7;}
+    .disp-line{display:flex;align-items:center;padding:4px 0;border-bottom:1px solid #2a2f33;}
+    .disp-line label{width:72px;color:#d0d5d9;flex:0 0 auto;}
+    .disp-line .val{font-weight:700;color:#2eff67;min-width:72px;display:inline-block;}
+    .disp-line .val[data-act]{cursor:pointer;display:inline-flex;align-items:center;min-width:110px;padding:2px 8px;border:1px solid transparent;border-radius:4px;}
+    .disp-line .val[data-act]:hover{background:#08161d;border-color:#2ea6a6;}
+    .disp-line .gas-unit{margin-left:4px;color:#e6f0ff;}
+    .alarm-inline-wrap{display:flex;align-items:center;justify-content:center;gap:10px;}
+    .alarm-inline-wrap .arrow-inline{cursor:pointer;font-size:20px;user-select:none;}
+    .alarm-value-box{min-width:110px;height:44px;display:flex;align-items:center;justify-content:center;background:#1a1f22;border:1px solid transparent;border-radius:4px;font-weight:700;font-size:18px;color:#2eff67;cursor:pointer;}
+    .alarm-value-box:hover{border-color:#2ea6a6;background:#10242d;}
+    .section-title{font-weight:700;margin-top:14px;margin-bottom:6px;}
+    .switch{position:relative;width:48px;height:24px;background:#e9eef5;border-radius:12px;box-shadow:inset 0 1px 3px rgba(0,0,0,.35);cursor:pointer;flex:0 0 auto;transition:background .2s;}
+    .switch::after{content:'';position:absolute;top:2px;left:2px;width:20px;height:20px;border-radius:50%;background:#fff;box-shadow:0 1px 2px rgba(0,0,0,.35);transition:.22s cubic-bezier(.4,.0,.2,1);}
+    .switch.on{background:#2ea866;}
+    .switch.on::after{left:26px;}
+    .switch-holder{display:flex;align-items:center;justify-content:center;flex:1;border:1px solid #2ea6a6;border-left:1px solid #2ea6a6;}
+    .leftControls .switch-holder:last-child{border-right:1px solid #2ea6a6;}
+    .detail-switch-holder{width:70px;height:70px;border:1px solid #2ea6a6;border-radius:6px;display:flex;align-items:center;justify-content:center;}
+    .detail-switch-holder.active{background:#072630;}
+    .gps-box{margin-top:10px;display:flex;align-items:center;gap:8px;font-size:12px;color:#9ec3ff;}
+    .gps-box img{width:18px;height:18px;object-fit:contain;}
+
+    /* ===== 新增：列表电池数字与倾角垂直值样式 ===== */
+    .batt-wrap{position:relative;width:32px;height:14px;display:inline-block;}
+    .batt-wrap img{position:absolute;inset:0;width:32px;height:14px;display:block;}
+    .batt-wrap span{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);font-size:10px;font-weight:700;color:#e6f0ff;text-shadow:0 0 2px #000,1px 0 0 #000,-1px 0 0 #000,0 1px 0 #000,0 -1px 0 #000;}
+    .value-box-tilt{display:flex;flex-direction:column;align-items:center;justify-content:center;height:54px;gap:4px;font-weight:700;}
+    .value-box-tilt span{line-height:1;}
+
+    /* ===== 新增：倾角详情模块化样式 ===== */
+    .module-box{border:1px solid #2ea6a6;border-radius:4px;padding:8px;background:rgba(10,18,22,.35);}
+    .mod-angle{display:flex;gap:24px;align-items:stretch;}
+    .mod-angle-left{flex:1;display:flex;flex-direction:column;gap:6px;font-size:14px;}
+    .mod-angle-left .angle-label{color:#d0d5d9;}
+    .angle-line{display:flex;align-items:center;gap:6px;font-weight:700;color:#2eff67;}
+    .angle-line-divider{height:1px;background:#2a2f33;margin:2px 0;}
+    .mod-angle-right{width:170px;display:flex;flex-direction:column;align-items:center;justify-content:flex-start;gap:10px;}
+    .angle-alarm-box{display:flex;align-items:center;justify-content:center;gap:8px;}
+    .angle-alarm-box .arrow-inline{font-size:22px;cursor:pointer;user-select:none;}
+    .angle-alarm-value{min-width:92px;height:46px;display:flex;align-items:center;justify-content:center;background:#1a1f22;border:1px solid #2ea6a6;border-radius:4px;font-weight:700;font-size:20px;color:#2eff67;padding:0 4px;}
+    .angle-move-box{width:100%;display:flex;flex-direction:column;gap:4px;}
+    .angle-move-value{height:42px;display:flex;align-items:center;justify-content:center;background:#08161d;border:1px solid #2ea6a6;border-radius:4px;font-weight:700;font-size:18px;color:#2eff67;}
+    .mod-gas{display:flex;flex-direction:column;gap:6px;font-size:14px;}
+    .gas-line{display:flex;align-items:center;gap:6px;}
+    .gas-line .gas-val{font-weight:700;color:#2eff67;cursor:pointer;padding:2px 8px;border:1px solid transparent;border-radius:4px;min-width:120px;display:inline-flex;align-items:center;justify-content:flex-start;}
+    .gas-line .gas-val.alarm{color:#ff6b6b;}
+    .gas-line .gas-val:hover{background:#08161d;border-color:#2ea6a6;}
+    .mod-vibration{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;cursor:pointer;width:160px;}
+    .mod-vibration img{height:40px;object-fit:contain;}
+    .mod-vibration:hover{background:#072630;}
+    .mod-disp-tilt{display:flex;align-items:stretch;gap:24px;}
+    .mod-disp-tilt-left{flex:1;display:flex;flex-direction:column;gap:6px;font-size:14px;}
+    .mod-disp-tilt-left .disp-row{display:flex;gap:6px;align-items:center;}
+    .mod-disp-tilt-left .disp-label{color:#d0d5d9;width:66px;}
+    .mod-disp-tilt-left .disp-val{font-weight:700;color:#2eff67;min-width:100px;}
+    .mod-disp-tilt-right{width:170px;display:flex;flex-direction:column;align-items:center;gap:10px;}
+    .mod-disp-tilt-right .disp-alarm-box{display:flex;align-items:center;justify-content:center;gap:8px;}
+    .mod-disp-tilt-right .disp-alarm-value{min-width:92px;height:46px;display:flex;align-items:center;justify-content:center;background:#1a1f22;border:1px solid #2ea6a6;border-radius:4px;font-weight:700;font-size:20px;color:#2eff67;padding:0 4px;cursor:pointer;}
+    .bottom-air{display:flex;align-items:center;gap:40px;font-size:12px;margin-top:8px;}
+    .no-click{pointer-events:none;}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="panel" style="position:absolute;inset:0;display:flex;flex-direction:column;padding:8px;">
+      <div class="grid" style="display:flex;flex:1;gap:12px;min-height:0;">
+        <div class="leftCol" style="flex:0 0 420px;display:flex;flex-direction:column;gap:8px;min-height:0;">
+          <div class="leftControls">
+            <button id="btnListAB" class="icon-btn-img" title="大小显"><img id="btnListABImg" src="/res/ic_ab_off.png" alt=""></button>
+            <button id="btnListRefresh" class="icon-btn-img" title="刷新"><img id="btnListRefreshImg" src="/res/ic_refresh.png" alt=""></button>
+            <button id="btnListFind" class="icon-btn-img" title="爆闪"><img id="btnListFindImg" src="/res/ic_find_off.png" alt=""></button>
+            <div class="switch-holder"><div id="swListMonitor" class="switch"></div></div>
+          </div>
+          <div id="leftList" style="flex:1;overflow:auto;display:flex;flex-direction:column;gap:6px;border:1px solid #2ea6a6;border-radius:8px;padding:6px;"></div>
+        </div>
+        <div class="detail" id="rightDetail" style="flex:1;border:1px solid #2ea6a6;border-radius:8px;min-height:0;padding:12px;display:flex;flex-direction:column;gap:10px;position:relative;z-index:5;">
+          <div class="placeholder" style="margin:auto;color:#678;">暂无探头</div>
+        </div>
+      </div>
+      <div class="spinner" id="spinner"></div>
+      <div class="refresh-btn" id="btnRefreshNow" title="恢复轮询">⟳</div>
+    </div>
+  </div>
+  <script type="module" src="./mode-disp-tilt-detail.js"></script>
+</body>
+</html>

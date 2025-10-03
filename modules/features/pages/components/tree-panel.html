@@ -1,0 +1,107 @@
+<!doctype html>
+<html><head><meta charset="utf-8"></head><body>
+  <template id="tpl-tree-panel">
+    <style>
+      :host { all: initial; contain: content; display:block; width:100%; height:100%; }
+      *, *::before, *::after { box-sizing: border-box; }
+      .wrap {
+        --panel-bg:#0f1720; --panel-line:rgba(255,255,255,.08);
+        --text:#cfd8dc; --text-dim:#9fb1bb; --on:#ffffff; --off:#7a8a93;
+        --dev-on-bg:linear-gradient(135deg,#5aa0ff,#3d89ff);
+        --dev-off-bg:#5b6b78;
+        height:100%; display:flex; flex-direction:column; background:var(--panel-bg); color:var(--text);
+      }
+
+      .filters { padding:8px 10px; border-bottom:1px solid var(--panel-line); }
+      .filters .row { display:grid; grid-template-columns:1fr; gap:6px; }
+
+      .filters label {
+        color:var(--text-dim);
+        display:flex; align-items:center; gap:8px; white-space:nowrap; width:100%;
+      }
+
+      .filters input:not([type="checkbox"]), .filters select, .filters textarea {
+        width:100%; background:#0b121a; color:#e3edf4; border:1px solid var(--panel-line); border-radius:4px; padding:6px 8px;
+        outline:none; transition:border-color .15s, box-shadow .15s;
+      }
+      .filters label > input:not([type="checkbox"]), .filters label > select, .filters label > textarea {
+        flex:1 1 auto; min-width:0; width:auto;
+      }
+      .filters input::placeholder { color:#7f8c98; }
+      .filters input:not([type="checkbox"]):focus, .filters select:focus, .filters textarea:focus {
+        border-color:#3d78d4; box-shadow:0 0 0 2px rgba(61,120,212,.18);
+      }
+
+      .filters input[type="checkbox"] { accent-color:#0b84d8; inline-size:auto; block-size:auto; }
+
+      .tree { flex:1 1 auto; overflow:auto; min-height:0; }
+      .tree { scrollbar-width:thin; scrollbar-color:#33424d #141b20; }
+      .tree::-webkit-scrollbar { width:8px; height:8px; }
+      .tree::-webkit-scrollbar-track { background:#141b20; }
+      .tree::-webkit-scrollbar-thumb { background:#33424d; border-radius:4px; }
+      .tree::-webkit-scrollbar-thumb:hover { background:#415464; }
+
+      .gdt { padding:6px 8px; min-width:100%; width:max-content; }
+      .node + .node { margin-top:6px; }
+
+      .row { display:flex; align-items:center; gap:6px; padding:4px 6px; border-radius:4px; cursor:pointer; user-select:none; }
+      .row:hover { background:#0e1a24; }
+
+      .toggle { width:16px; text-align:center; color:#9fb1bb; }
+      .toggle.is-empty { visibility:hidden; }
+      .ic-user { display:none; }
+
+      .row.is-online .title { color: var(--on); }
+      .row.is-offline .title { color: var(--off); }
+
+      .node.dev {
+        display:flex; align-items:center; gap:6px;
+        padding:6px 8px; border-radius:4px; cursor:pointer;
+        border:1px solid transparent;
+      }
+      .node.dev:hover { background:#15202b; border-color:rgba(255,255,255,.08); }
+      .node.dev .ic-dev { width:12px; height:12px; border-radius:2px; display:inline-block; background:var(--dev-on-bg); }
+      .node.dev .title { white-space:nowrap; }
+
+      .node.dev.is-online .title { color:var(--on); }
+      .node.dev.is-offline .title { color:var(--off); }
+      .node.dev.is-online .ic-dev { background:var(--dev-on-bg); }
+      .node.dev.is-offline .ic-dev { background:var(--dev-off-bg); }
+
+      .children { margin-left:18px; border-left:1px dashed rgba(255,255,255,.12); padding-left:10px; }
+      .children.is-collapsed { display:none; }
+
+      /* 未分组设备区，可折叠 */
+      .sec { margin:8px 8px 12px; border-radius:4px; }
+      .sec__title {
+        font-weight:600; padding:6px 8px; color:#e1edf7; background:#10212e;
+        border-radius:4px; border:1px solid rgba(255,255,255,.08);
+        display:flex; align-items:center; gap:6px; cursor:pointer; user-select:none;
+      }
+      .sec__title::before { content:'▾'; width:16px; text-align:center; color:#9fb1bb; }
+      .sec.is-collapsed .sec__title::before { content:'▸'; }
+      .list { padding:6px 8px; display:flex; flex-direction:column; gap:4px; }
+      .sec.is-collapsed .list { display:none; }
+
+      .chip { display:flex; align-items:center; gap:6px; padding:6px 8px; border-radius:4px; cursor:pointer; border:1px solid transparent; }
+      .chip:hover { background:#15202b; border:1px solid rgba(255,255,255,.08); }
+      .chip .ic-dev { width:12px; height:12px; border-radius:2px; }
+      .chip.is-online .title { color:var(--on); }
+      .chip.is-offline .title { color:var(--off); }
+      .chip.is-online .ic-dev { background:var(--dev-on-bg); }
+      .chip.is-offline .ic-dev { background:var(--dev-off-bg); }
+    </style>
+
+    <div class="wrap">
+      <div class="filters">
+        <div class="row">
+          <label>设备类型：<select id="fltDevType"><option value="0">全部</option></select></label>
+          <label>设备模式：<select id="fltDevMode"><option value="0">全部</option></select></label>
+          <label>名称/编号：<input id="fltSearch" placeholder="模糊搜索"/></label>
+          <label class="chk"><input type="checkbox" id="fltOnline"/> 仅显示在线</label>
+        </div>
+      </div>
+      <div class="tree" id="tree"></div>
+    </div>
+  </template>
+</body></html>

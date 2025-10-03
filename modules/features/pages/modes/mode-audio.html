@@ -1,0 +1,50 @@
+<!doctype html>
+<html>
+<head><meta charset="utf-8"></head>
+<body>
+  <template id="tpl-mode-audio">
+    <style>
+      :host{
+        all:initial;
+        contain:content;
+        display:block;
+        width:100%;
+        height:100%;
+      }
+      *,*::before,*::after{box-sizing:border-box;}
+
+      .wrap{
+        position:relative;
+        height:100%;
+        padding:0;
+        background:#000;
+        color:#fff;
+        font:12px/1 system-ui,Segoe UI,Roboto,Arial;
+        user-select:none;
+      }
+
+      canvas{
+        display:block;
+        width:100%;
+        height:100%; /* 占满父容器 */
+        background:#000;
+      }
+
+      .empty{
+        position:absolute;
+        inset:0;
+        display:none;
+        align-items:center;
+        justify-content:center;
+        color:#9ab;
+        font-size:12px;
+        pointer-events:none;
+      }
+    </style>
+    <div class="wrap">
+      <canvas id="cv"></canvas>
+      <div id="empty" class="empty">无探头</div>
+    </div>
+  </template>
+</body>
+</html>

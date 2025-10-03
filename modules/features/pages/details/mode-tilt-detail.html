@@ -1,0 +1,489 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8"/>
+  <title>倾角模式详情</title>
+  <script type="importmap">
+  {
+    "imports": {
+      "@config/": "/config/",
+      "@core/": "/modules/core/",
+      "@api/": "/modules/api/",
+      "@state/": "/modules/state/",
+      "@features/": "/modules/features/",
+      "@ui/": "/modules/ui/",
+      "@utils/": "/modules/utils/",
+      "@layout/": "/modules/layout/"
+    }
+  }
+  </script>
+  <style>
+    html,body{
+      height:100%;margin:0;
+      background:#000;color:#e6f0ff;
+      font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial;
+      overflow:hidden;
+    }
+    *{box-sizing:border-box;}
+
+    .wrap{
+      position:absolute; inset:48px 0 0 0;
+      background:#000;
+      overflow:hidden;
+      display:flex;
+      flex-direction:column;
+      min-height:0;
+    }
+
+    /* 9 等分列：编号 | 状态图标 | 状态开关 | 预警图标 | 预警开关 | 报警阈值 | 电量 | 移动值 | 当前值 */
+    .hdr,
+    .row{
+      display:grid;
+      grid-template-columns:repeat(9, 1fr);
+      align-items:center;
+      padding:6px 10px;
+      column-gap:4px;
+      min-width:0;
+    }
+
+    .hdr{
+      font-weight:700;
+      border-bottom:1px solid #2a3642;
+      background:#0a0f14;
+      position:relative;
+      flex:0 0 auto;
+    }
+
+    #list{
+      flex:1 1 auto;
+      min-height:0;
+      overflow:hidden;
+      display:flex;
+      flex-direction:column;
+    }
+
+    .row{
+      border-bottom:1px solid #1f2a3a;
+      font-size:13px;
+    }
+    .row.empty{border-bottom:1px solid transparent;pointer-events:none;}
+
+    .cell{
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      min-width:0;
+      gap:6px;
+      position:relative;
+    }
+    .cell.left{justify-content:flex-start;}
+    .cell.right{justify-content:flex-end;}
+
+    .wifi{width:26px;height:18px;display:flex;align-items:center;justify-content:center;}
+    .wifi img{width:100%;height:100%;display:block;object-fit:contain;}
+
+    .switch{
+      position:relative;width:48px;height:24px;
+      background:#e9eef5;
+      border-radius:12px;
+      box-shadow:inset 0 1px 3px rgba(0,0,0,.35);
+      cursor:pointer;
+      flex:0 0 auto;
+      transition:background .2s;
+    }
+    .switch::after{
+      content:'';position:absolute;top:2px;left:2px;
+      width:20px;height:20px;border-radius:50%;
+      background:#fff;
+      box-shadow:0 1px 2px rgba(0,0,0,.35);
+      transition:.22s cubic-bezier(.4,.0,.2,1);
+    }
+    .switch.on{background:#2ea866;}
+    .switch.on::after{left:26px;}
+
+    .icon-box{
+      width:30px;height:30px;
+      display:flex;align-items:center;justify-content:center;
+    }
+    .icon-box img{
+      max-width:100%;max-height:100%;
+      display:block;object-fit:contain;
+      image-rendering:auto;
+    }
+
+    .caret{
+      width:0;height:0;
+      border-top:9px solid transparent;
+      border-bottom:9px solid transparent;
+      cursor:pointer;
+      flex:0 0 auto;
+    }
+    .caret.left{border-right:12px solid #cfe3ff;}
+    .caret.right{border-left:12px solid #cfe3ff;}
+
+    .thresh{
+      min-width:60px;
+      text-align:center;
+      font-weight:700;
+      font-size:14px;
+    }
+
+    .batt{width:32px;height:14px;display:flex;align-items:center;justify-content:center;}
+    .batt img{width:100%;height:100%;display:block;object-fit:contain;}
+
+    .val{font-weight:700;color:#aefcae;white-space:nowrap;font-size:13px;}
+    .xyz{
+      display:flex;flex-direction:column;
+      gap:2px;line-height:1.15;
+      font-weight:700;color:#aefcae;
+      white-space:nowrap;font-size:12px;
+      align-items:flex-start;
+    }
+
+    .spinner{
+      position:absolute;top:6px;right:10px;
+      width:22px;height:22px;
+      border:3px solid #2a5b8a;
+      border-top-color:#9ec3ff;
+      border-radius:50%;
+      animation:spin .8s linear infinite;
+      display:none;
+    }
+    @keyframes spin{to{transform:rotate(360deg)}}
+
+    .refresh-btn{
+      position:absolute;top:6px;right:42px;
+      width:24px;height:24px;
+      background:#123;color:#9ec3ff;
+      border:1px solid #345;border-radius:4px;
+      font-size:14px;display:none;
+      align-items:center;justify-content:center;
+      cursor:pointer;
+    }
+
+    .suspended .hdr,
+    .suspended #list{
+      pointer-events:none;
+      filter:grayscale(.55) brightness(.85);
+    }
+    .suspended .refresh-btn{pointer-events:auto;}
+
+    .col-id{justify-content:flex-start;}
+    .col-current{justify-content:flex-start;}
+    .col-thresh{gap:6px;}
+
+  </style>
+</head>
+<body>
+<script type="module">
+import { mountTopbar, detailBridge, useDetailContext, setupTopbarControls } from './common/detail-common.js';
+import { androidWsApi, AndroidTopics } from '@api/androidWSApi.js';
+import { modePoller } from '../modes/mode-poller.js';
+import { FAIL_TOAST_PREFIX } from '/config/constants.js';
+import { showToast } from '@ui/toast.js';
+
+const PAGE_MODEL = 1;
+const DISP_THRESH = [0.003,0.005,0.015,0.035,0.065,0.100];
+const ANGLE_THRESH = [0.3,0.5,1.0,2.0,4.0,8.0];
+
+function thrVal(devType, idx){
+  idx = Number(idx);
+  if(devType===0){
+    const i=(idx>=0&&idx<DISP_THRESH.length)?idx:0;
+    return DISP_THRESH[i].toFixed(3)+'m';
+  }else{
+    const i=(idx>=0&&idx<ANGLE_THRESH.length)?idx:0;
+    return ANGLE_THRESH[i].toFixed(1)+'°';
+  }
+}
+function mapBattery7(b){
+  const v=Math.max(0,Math.min(100,Number(b)||0));
+  if(v===0) return 0;
+  if(v===100) return 6;
+  if(v<20) return 1;
+  if(v<40) return 2;
+  if(v<60) return 3;
+  if(v<80) return 4;
+  if(v<100) return 5;
+  return 6;
+}
+function numFixed(v, n){ const x=Number(v); return isFinite(x)?x.toFixed(n): (n===3?'0.000':'0.00'); }
+function signed3(v){
+  const x=Number(v)||0; const s=x>=0?'+':'-'; const a=Math.abs(x).toFixed(2); const [i,f]=a.split('.');
+  return `${s}${i.padStart(3,'0')}.${f||'00'}°`;
+}
+
+/* 图标映射 */
+function alarmIcon(it){
+  const isAlarmOn = !!(it?.isAlarm && it?.alarm);
+  return isAlarmOn? '/res/hat_red.png' : '/res/hat_green.png';
+}
+function warnIcon(it){
+  const isWarn = !!it?.isStartAlarm;
+  return isWarn? '/res/circle_red.jpg' : '/res/circle_white.jpg';
+}
+
+const bridge = detailBridge();
+const ctx = await useDetailContext(bridge, { page:'mode-tilt' });
+
+/* devId 工具 */
+let devIdRaw = ctx.devId ?? null;
+function getDevId(){ return ctx.devId && ctx.devId!=='' ? String(ctx.devId) : (devIdRaw||''); }
+function getDevIdNum(){ const s=getDevId(); if(!s) return null; const n=Number(s); return Number.isFinite(n)?n:null; }
+async function waitDevId(ms=3000){
+  const st=Date.now();
+  while(!getDevId()){
+    if(Date.now()-st>ms) break;
+    await new Promise(r=>setTimeout(r,100));
+  }
+  devIdRaw=getDevId()||devIdRaw;
+}
+
+const ui = mountTopbar(document.body);
+
+/* 替换原：ui.lblDevNo.textContent = ctx.devNo || getDevId() || '设备'; */
+// ui.lblDevNo.textContent = buildTopbarDevLabel(getDevId(), '', ctx.devNo || '');
+
+const topbarHelper = setupTopbarControls({
+  ui,
+  page:'mode-tilt',
+  getDevIdNum: ()=>getDevIdNum(),
+  bridge
+});
+
+
+
+const wrap = document.createElement('div'); wrap.className='wrap';
+wrap.innerHTML = `
+  <div class="hdr" id="hdr">
+    <div class="cell col-id">编号</div>
+    <div class="cell">状态</div>
+    <div class="cell"><div class="switch" id="swAlarmAll" data-act="alarm-all"></div></div>
+    <div class="cell">预警状态</div>
+    <div class="cell"><div class="switch" id="swWarnAll" data-act="warn-all"></div></div>
+    <div class="cell">报警阈值</div>
+    <div class="cell">电量</div>
+    <div class="cell">移动值</div>
+    <div class="cell">当前值</div>
+    <div class="spinner" id="spinner"></div>
+    <div class="refresh-btn" id="btnRefreshNow" title="恢复">⟳</div>
+  </div>
+  <div id="list"></div>
+`;
+document.body.appendChild(wrap);
+
+const hdr = wrap.querySelector('#hdr');
+const list = wrap.querySelector('#list');
+const swAlarmAll = wrap.querySelector('#swAlarmAll');
+const swWarnAll  = wrap.querySelector('#swWarnAll');
+const spinner = wrap.querySelector('#spinner');
+const btnRefreshNow = wrap.querySelector('#btnRefreshNow');
+
+let items = [];
+const MAX_ROWS = 12;
+let loadingCount=0;
+let suspended=false;
+
+/* Loading / Refresh */
+function showSpinner(){ loadingCount++; if(spinner.style.display!=='block') spinner.style.display='block'; }
+function hideSpinner(){ loadingCount=Math.max(0,loadingCount-1); if(loadingCount===0) spinner.style.display='none'; }
+function showRefresh(){
+  btnRefreshNow.style.display='flex';
+  wrap.classList.add('suspended');
+  loadingCount=0; spinner.style.display='none';
+}
+function hideRefresh(){
+  btnRefreshNow.style.display='none';
+  wrap.classList.remove('suspended');
+}
+btnRefreshNow.onclick = ()=>{
+  if(suspended){
+    hideRefresh();
+    showSpinner();
+    modePoller.resume('dipOneChannel', getDevId(), { immediate:true });
+  }else{
+    hideRefresh();
+    forceFetch();
+  }
+};
+
+function wifiImg(level){
+  const n=Math.max(0,Math.min(4,Math.floor(+level||0)));
+  return `/res/wifi${n}.png`;
+}
+
+/* 行构造：9 列
+ * 修改点：编号列现在是 “名称在前，WiFi 在后”
+ */
+function buildRow(it,i){
+  const devType = Number(it?.devType)||0;
+  const isXYZ = devType===2;
+  const mv = numFixed(it?.moveValue, devType===0?3:2);
+  const idx = it?.index!=null?it.index:(i+1);
+  const th = thrVal(devType, it?.thresholdIndex);
+  const curVal = isXYZ
+    ? `<div class="xyz">
+         <div>X:${signed3(it?.curValueX)}</div>
+         <div>Y:${signed3(it?.curValueY)}</div>
+         <div>Z:${signed3(it?.curValueZ)}</div>
+       </div>`
+    : `<div class="val">${numFixed(it?.curValue, devType===0?3:2)}${devType===0?'m':'°'}</div>`;
+  const battLvl = mapBattery7(it?.battery);
+
+  const alarmOn = !!(it?.isAlarm && it?.alarm);
+  const warnOn  = !!it?.isStartAlarm;
+
+  return `
+    <div class="row" data-code="${String(it?.code||'')}" data-idx="${i}" data-devtype="${devType}">
+      <!-- 编号列：名称在前，WiFi 在后 -->
+      <div class="cell col-id left">
+        <div class="name">${devType===0?'位移':'倾角'}${idx}#</div>
+        <div class="wifi"><img src="${wifiImg(it?.wifiStrength)}"></div>
+      </div>
+
+      <!-- 状态图标 -->
+      <div class="cell"><div class="icon-box"><img src="${alarmIcon(it)}" /></div></div>
+
+      <!-- 状态开关 -->
+      <div class="cell">
+        <div class="switch ${alarmOn?'on':''}" data-act="alarm-switch"></div>
+      </div>
+
+      <!-- 预警状态图标 -->
+      <div class="cell"><div class="icon-box"><img src="${warnIcon(it)}" /></div></div>
+
+      <!-- 预警开关 -->
+      <div class="cell">
+        <div class="switch ${warnOn?'on':''}" data-act="warn-switch"></div>
+      </div>
+
+      <!-- 报警阈值调节 -->
+      <div class="cell col-thresh">
+        <div class="caret left" data-act="thresh-dec"></div>
+        <div class="thresh">${th}</div>
+        <div class="caret right" data-act="thresh-inc"></div>
+      </div>
+
+      <!-- 电量 -->
+      <div class="cell">
+        <div class="batt"><img src="/res/bat${battLvl}.png"></div>
+      </div>
+
+      <!-- 移动值 -->
+      <div class="cell"><div class="val">${mv}${devType===0?'':'°'}</div></div>
+
+      <!-- 当前值 -->
+      <div class="cell col-current">${curVal}</div>
+    </div>
+  `;
+}
+
+function render(){
+  const rows = (Array.isArray(items)?items.slice(0,MAX_ROWS):[]);
+  const html = rows.map(buildRow).join('');
+  const pad = MAX_ROWS - rows.length;
+  list.innerHTML = html + (pad>0?Array.from({length:pad},()=>'<div class="row empty"></div>').join(''):'');
+  const allAlarmOn = rows.length>0 && rows.every(it=>!!(it?.isAlarm && it?.alarm));
+  const allWarnOn  = rows.length>0 && rows.every(it=>!!it?.isStartAlarm);
+  swAlarmAll.classList.toggle('on', allAlarmOn);
+  swWarnAll.classList.toggle('on', allWarnOn);
+}
+
+function forceFetch(){
+  if(suspended) return;
+  const idNum=getDevIdNum(); if(idNum==null) return;
+  showSpinner();
+  androidWsApi.forceListFetch('dipOneChannel', idNum);
+}
+
+/* Header 开关 */
+hdr.addEventListener('click', e=>{
+  const act = e.target.getAttribute('data-act'); if(!act) return;
+  const idNum=getDevIdNum(); if(idNum==null) return;
+  if(!Array.isArray(items) || items.length===0) return;
+  const codes = items.map(it=>String(it?.code||'')).filter(Boolean);
+  if(!codes.length) return;
+  showSpinner();
+  if(act==='alarm-all'){
+    const allOn = items.every(it=> !!(it?.isAlarm && it?.alarm));
+    androidWsApi.controlAngle({ toId:idNum, operation: allOn?2:1, codeArray: codes }).finally(forceFetch);
+  }else if(act==='warn-all'){
+    const allOn = items.every(it=> !!it?.isStartAlarm);
+    androidWsApi.controlAngle({ toId:idNum, operation: allOn?4:3, codeArray: codes }).finally(forceFetch);
+  }
+});
+
+/* 行内事件 */
+list.addEventListener('click', e=>{
+  const row = e.target.closest('.row'); if(!row) return;
+  const idx = Number(row.getAttribute('data-idx')); if(idx<0) return;
+  const it = items[idx]; if(!it) return;
+  const code = String(it?.code||''); if(!code) return;
+  const act = e.target.getAttribute('data-act'); if(!act) return;
+  const idNum=getDevIdNum(); if(idNum==null) return;
+  showSpinner();
+  if(act==='alarm-switch'){
+    const alarmOn = !!(it?.isAlarm && it?.alarm);
+    androidWsApi.controlAngle({ toId:idNum, operation: alarmOn?2:1, codeArray:[code] }).finally(forceFetch);
+  }else if(act==='warn-switch'){
+    const warnOn = !!it?.isStartAlarm;
+    androidWsApi.controlAngle({ toId:idNum, operation: warnOn?4:3, codeArray:[code] }).finally(forceFetch);
+  }else if(act==='thresh-dec' || act==='thresh-inc'){
+    const isTilt = Number(it?.devType)!==0;
+    const op = act==='thresh-dec' ? 1 : 2;
+    if(isTilt){
+      androidWsApi.setAngleAlarmVal({ toId:idNum, model:PAGE_MODEL, operation:op, probeId:code }).finally(forceFetch);
+    }else{
+      androidWsApi.setMoveAlarmVal ({ toId:idNum, model:PAGE_MODEL, operation:op, probeId:code }).finally(forceFetch);
+    }
+  }
+});
+
+/* 订阅 */
+await waitDevId();
+const idNum = getDevIdNum();
+let off = null;
+if(idNum!=null){
+  off = androidWsApi.onByDev(AndroidTopics.DipOneChannelResponse, idNum, msg=>{
+    if(msg && msg.code===0 && Array.isArray(msg.data)){
+      modePoller.markSuccess('dipOneChannel', idNum, msg.requestId);
+      items = msg.data;
+      render();
+      hideSpinner();
+      hideRefresh();
+    }
+  });
+  forceFetch();
+}
+
+/* suspend / resume */
+modePoller.on('suspend', ({ cmd, devId:d })=>{
+  if(cmd==='dipOneChannel' && String(d)===String(idNum)){
+    suspended=true;
+    showRefresh();
+    try { window.eventBus?.emit('toast:show',{ type:'warn', message:`${FAIL_TOAST_PREFIX}${getDevId()}` }); } catch {}
+  }
+});
+modePoller.on('resume', ({ cmd, devId:d })=>{
+  if(cmd==='dipOneChannel' && String(d)===String(idNum)){
+    suspended=false;
+    hideRefresh();
+    showSpinner();
+  }
+});
+
+/* 顶栏拍照/录像/对讲逻辑已统一，移除原实现 */
+
+if(idNum!=null){
+  const wsCh = await bridge.wsOpen({ kind:'mode-tilt', devId: idNum });
+  topbarHelper.updateWsChannel(wsCh);
+}
+
+//ui.btnBack.onclick = ()=> parent.postMessage({ __detail:true, t:'back' }, '*'); /* 返回仍保留 */
+
+
+window.addEventListener('beforeunload', ()=>{ try{ off && off(); }catch{} });
+
+</script>
+</body>
+</html>

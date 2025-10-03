@@ -1,0 +1,248 @@
+<!doctype html>
+<html>
+<head><meta charset="utf-8"></head>
+<body>
+  <template id="tpl-site-page">
+    <style>
+      .sp-root {
+        position:absolute; inset:0; display:flex; min-width:0; min-height:0;
+        background:#0d1216; color:#cfd8dc;
+        --media-row-height: 280px;
+        overflow-anchor: none;
+      }
+      .sp-root.left-collapsed .sp-tree-handle { display:flex; }
+
+      .sp-left {
+        width:320px; min-width:240px; max-width:50vw;
+        display:flex; flex-direction:column; min-height:0;
+        border-right:1px solid rgba(255,255,255,.08);
+        position:relative; z-index:10;
+        flex:0 0 auto;
+        transition:none;
+      }
+      .sp-left.collapsed { width:0 !important; min-width:0 !important; border-right:none; overflow:hidden; }
+
+      .sp-splitter { width:12px; cursor:col-resize; position:relative; z-index:10; background:transparent; }
+      .sp-splitter:hover { background:rgba(255,255,255,.04); }
+      .sp-left.collapsed + .sp-splitter { width:0 !important; cursor:default; background:transparent; }
+
+      /* 中心区域：纵向两段，上部自适应，下部固定 (--media-row-height) */
+      .sp-center {
+        flex:1 1 auto; display:flex; flex-direction:column;
+        min-width:0; min-height:0; position:relative;
+      }
+
+      .sp-top {
+        position:relative; z-index:10;
+        display:flex; gap:10px;
+        padding:4px 10px;
+        flex:1 1 auto;         /* 填满除去底部固定区剩余空间 */
+        min-width:0; min-height:0;
+        overflow:hidden; isolation:isolate;
+      }
+
+      .sp-mapbox {
+        position:relative; z-index:20;
+        flex:1 1 auto;
+        border:1px solid rgba(255,255,255,.08);
+        border-radius:4px;
+        min-width:0; min-height:0;
+        overflow:hidden; pointer-events:auto;
+        display:flex; flex-direction:column;
+      }
+      .sp-mapmount { width:100%; height:100%; flex:1 1 auto; }
+
+      .sp-side {
+        position:relative; z-index:15;
+        width:380px; max-width:42vw;
+        display:grid; grid-template-rows:auto 1fr;
+        gap:10px;
+        min-width:0; min-height:0;
+      }
+
+      .sp-status {
+        border:1px solid rgba(255,255,255,.08);
+        background:#0b121a; border-radius:4px; padding:8px 10px;
+      }
+      .sp-status h3 { margin:0 0 6px; font-size:15px; }
+
+      .sp-notify {
+        border:1px solid rgba(255,255,255,.08);
+        background:#0b121a; border-radius:4px;
+        padding:8px 10px;
+        display:flex; flex-direction:column;
+        min-height:0;
+      }
+      .sp-notify h3 { margin:0 0 6px; font-size:15px; }
+      #notifyList {
+        flex:1 1 auto; overflow:auto; min-height:0;
+        scrollbar-width:thin; scrollbar-color:#33424d #141b20;
+      }
+      #notifyList::-webkit-scrollbar { width:8px; height:8px; }
+      #notifyList::-webkit-scrollbar-track { background:#141b20; }
+      #notifyList::-webkit-scrollbar-thumb { background:#33424d; border-radius:4px; }
+      #notifyList::-webkit-scrollbar-thumb:hover { background:#415464; }
+
+      /* 底部固定高度媒体区 */
+      .sp-bottom {
+        position:relative; z-index:1;
+        padding:0 10px 4px;
+        overflow:hidden;
+        flex:0 0 var(--media-row-height);
+        height:var(--media-row-height);
+        min-height:var(--media-row-height);
+      }
+
+      .sp-grid {
+        display:grid; grid-template-columns:repeat(6,1fr); gap:10px;
+        height:100%; min-width:0;
+        contain:layout paint;
+        will-change:transform;
+        transform:translateZ(0);
+      }
+      .sp-cell {
+        background:#111722; border:2px solid #3a4854;
+        border-radius:6px;
+        display:flex; flex-direction:column;
+        overflow:hidden; contain:content;
+      }
+
+      .sp-cell-hd {
+        display:flex; align-items:center; justify-content:space-between;
+        padding:6px 8px; font-size:12px;
+        background:#0f1b27; border-bottom:1px solid rgba(255,255,255,.08);
+        cursor:default; user-select:none;
+      }
+      .sp-cell-bd {
+        position:relative; flex:1 1 auto; min-height:0;
+        background:#000;
+        display:flex; align-items:center; justify-content:center;
+        contain:strict;
+        will-change:opacity;
+      }
+      .sp-cell-bd video,
+      .sp-cell-bd canvas,
+      .sp-cell-bd iframe {
+        display:block; width:100%; height:100%; object-fit:fill;
+        background:#000 !important; outline:none; border:0;
+      }
+      .sp-cell-bd,
+      .sp-cell-bd > *,
+      .sp-cell-bd video,
+      .sp-cell-bd canvas,
+      .sp-cell-bd iframe { cursor:pointer !important; }
+
+      .sp-cell [data-close] {
+        width:20px; height:20px; border:none;
+        background:transparent; color:#ccd; cursor:pointer;
+      }
+      .sp-cell [data-close]:hover { color:#fff; }
+
+      .sp-tree-toggle {
+        position:absolute; top:6px; right:6px;
+        width:24px; height:24px; display:flex;
+        align-items:center; justify-content:center;
+        background:#1e272f; color:#cfd8dc;
+        border:1px solid #2b3741; border-radius:4px;
+        cursor:pointer; z-index:30;
+      }
+      .sp-tree-toggle:hover { background:#27323a; }
+      .sp-tree-handle {
+        position:absolute; top:56px; left:6px;
+        width:24px; height:28px; display:none;
+        align-items:center; justify-content:center;
+        background:#1e272f; color:#cfd8dc;
+        border:1px solid #2b3741; border-radius:4px;
+        cursor:pointer; z-index:40;
+      }
+      .sp-tree-handle:hover { background:#27323a; }
+
+      .sp-cell.dragging { opacity:.75; outline:2px dashed #3d89ff; outline-offset:-2px; }
+      .sp-cell.drag-target { box-shadow:inset 0 0 0 2px #3d89ff; }
+    </style>
+
+    <div class="sp-root" id="spRoot">
+      <div class="sp-left" id="spLeft">
+        <button type="button" id="spTreeToggle" class="sp-tree-toggle" title="折叠树状栏">«</button>
+      </div>
+      <div class="sp-splitter" id="spSplitter" title="拖动调整左侧宽度"></div>
+
+      <button type="button" id="spTreeHandle" class="sp-tree-handle" title="展开树状栏">»</button>
+
+      <div class="sp-center">
+        <div class="sp-top">
+          <div class="sp-mapbox"><div class="sp-mapmount" id="spMapMount"></div></div>
+          <div class="sp-side">
+            <div class="sp-status">
+              <h3>设备状态</h3>
+              <div id="summaryChart"></div>
+            </div>
+            <div class="sp-notify">
+              <h3>通知列表</h3>
+              <div id="notifyList"></div>
+            </div>
+          </div>
+        </div>
+        <div class="sp-bottom">
+          <div id="mediaGrid" class="sp-grid">
+            <div class="sp-cell" data-idx="0">
+              <div class="sp-cell-hd" style="display:none;">
+                <div id="mediaTitle0" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:calc(100% - 24px);"></div>
+                <button data-close="0" title="关闭">✕</button>
+              </div>
+              <div id="mediaBody0" class="sp-cell-bd" data-free="1">
+                <div style="color:#567;font-size:12px;">视频流/模式</div>
+              </div>
+            </div>
+            <div class="sp-cell" data-idx="1">
+              <div class="sp-cell-hd" style="display:none;">
+                <div id="mediaTitle1" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:calc(100% - 24px);"></div>
+                <button data-close="1" title="关闭">✕</button>
+              </div>
+              <div id="mediaBody1" class="sp-cell-bd" data-free="1">
+                <div style="color:#567;font-size:12px;">视频流/模式</div>
+              </div>
+            </div>
+            <div class="sp-cell" data-idx="2">
+              <div class="sp-cell-hd" style="display:none;">
+                <div id="mediaTitle2" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:calc(100% - 24px);"></div>
+                <button data-close="2" title="关闭">✕</button>
+              </div>
+              <div id="mediaBody2" class="sp-cell-bd" data-free="1">
+                <div style="color:#567;font-size:12px;">视频流/模式</div>
+              </div>
+            </div>
+            <div class="sp-cell" data-idx="3">
+              <div class="sp-cell-hd" style="display:none;">
+                <div id="mediaTitle3" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:calc(100% - 24px);"></div>
+                <button data-close="3" title="关闭">✕</button>
+              </div>
+              <div id="mediaBody3" class="sp-cell-bd" data-free="1">
+                <div style="color:#567;font-size:12px;">视频流/模式</div>
+              </div>
+            </div>
+            <div class="sp-cell" data-idx="4">
+              <div class="sp-cell-hd" style="display:none;">
+                <div id="mediaTitle4" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:calc(100% - 24px);"></div>
+                <button data-close="4" title="关闭">✕</button>
+              </div>
+              <div id="mediaBody4" class="sp-cell-bd" data-free="1">
+                <div style="color:#567;font-size:12px;">视频流/模式</div>
+              </div>
+            </div>
+            <div class="sp-cell" data-idx="5">
+              <div class="sp-cell-hd" style="display:none;">
+                <div id="mediaTitle5" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:calc(100% - 24px);"></div>
+                <button data-close="5" title="关闭">✕</button>
+              </div>
+              <div id="mediaBody5" class="sp-cell-bd" data-free="1">
+                <div style="color:#567;font-size:12px;">视频流/模式</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </template>
+</body>
+</html>

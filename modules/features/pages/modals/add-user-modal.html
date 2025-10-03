@@ -1,0 +1,157 @@
+<!doctype html>
+<html><head><meta charset="utf-8"></head><body>
+  <template id="tpl-add-user-modal">
+    <style>
+      .add-user-modal.fixed-size-modal,
+      .add-user-modal.fixed-size-modal .modal-body,
+      .add-user-modal.fixed-size-modal .modal-form { height:100%; overflow:hidden; box-sizing:border-box; }
+      .add-user-modal .user-form.no-scroll { display:flex; flex-direction:column; height:100%; overflow:hidden; padding:10px 14px 12px; box-sizing:border-box; gap:10px; }
+      .add-user-modal .content-scroll-lock { flex:1; display:flex; flex-direction:column; gap:10px; min-height:0; overflow:auto; }
+
+      .add-user-modal .form-row { display:flex; align-items:center; gap:14px; min-height:40px; }
+      .add-user-modal .form-row .form-label { flex:0 0 110px; text-align:left; font-size:13px; color:#c8d0d7; line-height:1.2; }
+      .add-user-modal .form-row .form-field { flex:1; display:flex; align-items:center; gap:8px; min-width:0; }
+
+      /* 统一深色输入/下拉样式（作用域化） */
+      .add-user-modal input, .add-user-modal select, .add-user-modal textarea {
+        width:100%; box-sizing:border-box; background:#161b21; border:1px solid #2c343c; border-radius:4px; color:#fff;
+        padding:6px 10px; font-size:13px; outline:none; transition:border-color .15s;
+      }
+      .add-user-modal select { min-height:32px; appearance:none; background-image:linear-gradient(45deg,transparent 50%,#9fb1bb 50%),linear-gradient(135deg,#9fb1bb 50%,transparent 50%);
+        background-position: calc(100% - 18px) calc(50% - 3px), calc(100% - 12px) calc(50% - 3px);
+        background-size:6px 6px, 6px 6px; background-repeat:no-repeat; padding-right:28px;
+      }
+      .add-user-modal input:focus, .add-user-modal select:focus, .add-user-modal textarea:focus { border-color:#3d78d4; }
+      .add-user-modal input:disabled, .add-user-modal select:disabled, .add-user-modal textarea:disabled { opacity:.7; cursor:not-allowed; }
+
+      .add-user-modal textarea { resize:vertical; overflow-y:auto; overflow-x:hidden; min-height:110px; max-height:240px; line-height:1.4; }
+      .add-user-modal .region-group { display:flex; gap:12px; width:100%; }
+      .add-user-modal .region-group select { flex:1; }
+
+      .add-user-modal .parent-search-list { margin-top:6px; max-height:180px; overflow:auto; border:1px solid #2d373f; border-radius:4px; background:#141c23; font-size:13px; }
+      .add-user-modal .parent-search-list { scrollbar-width:thin; scrollbar-color:#33424d #141b20; }
+      .add-user-modal .parent-search-list::-webkit-scrollbar { width:8px; height:8px; }
+      .add-user-modal .parent-search-list::-webkit-scrollbar-track { background:#141b20; }
+      .add-user-modal .parent-search-list::-webkit-scrollbar-thumb { background:#33424d; border-radius:4px; }
+      .add-user-modal .parent-search-list::-webkit-scrollbar-thumb:hover { background:#415464; }
+      .add-user-modal .parent-item { padding:6px 10px; cursor:pointer; white-space:nowrap; text-overflow:ellipsis; overflow:hidden; border-bottom:1px solid #1f252b; }
+      .add-user-modal .parent-item:last-child { border-bottom:none; }
+      .add-user-modal .parent-item:hover { background:#1f2b34; color:#fff; }
+      .add-user-modal .parent-item.empty { cursor:default; color:#6c7680; }
+
+      .add-user-modal .hint { font-size:12px; color:#7d8891; }
+
+      .add-user-modal .pwd-box { position:relative; flex:1; display:flex; align-items:center; }
+      .add-user-modal .pwd-box input { padding-left:34px; }
+      .add-user-modal .pwd-eye { position:absolute; left:6px; top:50%; transform:translateY(-50%); width:24px; height:24px; display:flex; align-items:center; justify-content:center; font-size:14px; cursor:pointer; border:none; background:transparent; color:#9aa5b1; }
+      .add-user-modal .pwd-eye:hover { color:#fff; }
+
+      .add-user-modal .pwd-mini-actions { display:flex; gap:6px; }
+
+      /* 关键修复：这条原来是全局 .btn.btn-xs，改为作用域，避免撑高用户列表的行高 */
+      .add-user-modal .btn.btn-xs { padding:2px 8px; font-size:12px; line-height:18px; background:#1f2730; border:1px solid #2f3944; color:#cfd6dd; border-radius:4px; cursor:pointer; }
+
+      .add-user-modal .pwd-extra { display:flex; flex-direction:column; gap:6px; padding-left:110px; margin-top:-4px; }
+      .add-user-modal .pwd-strength-line { display:flex; align-items:center; gap:10px; }
+      .add-user-modal .pwd-strength-bg { flex:1; height:6px; background:#2a3238; border-radius:3px; overflow:hidden; }
+      .add-user-modal .pwd-strength-bar { height:100%; width:0; background:linear-gradient(90deg,#ff4d4f,#ffa940,#52c41a); transition:width .25s; }
+      .add-user-modal .pwd-strength-text { font-size:12px; min-width:30px; text-align:left; color:#97a2ad; }
+      .add-user-modal .pwd-inline-msg { font-size:12px; min-height:16px; }
+
+      .add-user-modal .bottom-actions { display:flex; justify-content:flex-end; gap:12px; padding-top:8px; border-top:1px solid #1f252b; flex-shrink:0; }
+    </style>
+
+    <div class="modal-form add-user-modal fixed-size-modal">
+      <form id="addUserForm" class="user-form no-scroll" autocomplete="off">
+        <div class="content-scroll-lock">
+          <input type="hidden" name="parentUserId" value="0" />
+
+          <div class="form-row">
+            <div class="form-label">用户角色 <span class="req">*</span></div>
+            <div class="form-field">
+              <select name="roleId" id="roleSelect" required></select>
+            </div>
+          </div>
+
+          <div class="form-row">
+            <div class="form-label">登录账号 <span class="req">*</span></div>
+            <div class="form-field">
+              <input name="account" required minlength="3" maxlength="32" pattern="[A-Za-z0-9_]+" placeholder="字母/数字/下划线"/>
+            </div>
+          </div>
+
+          <div class="form-row">
+            <div class="form-label">用户名 <span class="req">*</span></div>
+            <div class="form-field">
+              <input name="name" required minlength="2" maxlength="32"/>
+            </div>
+          </div>
+
+          <div class="form-row">
+            <div class="form-label">密码 <span class="req">*</span></div>
+            <div class="form-field">
+              <div class="pwd-box">
+                <button type="button" class="pwd-eye" data-eye="pwd1" title="显示/隐藏">👁</button>
+                <input type="password" name="password" id="pwd1" minlength="8" placeholder="至少8位，含 2 类字符" autocomplete="new-password" required/>
+              </div>
+              <div class="pwd-mini-actions">
+                <button type="button" class="btn btn-xs" id="btnGenPwd">生成</button>
+                <button type="button" class="btn btn-xs" id="btnCopyPwd">复制</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="pwd-extra">
+            <div class="pwd-strength-line">
+              <div class="pwd-strength-bg"><div id="pwdStrengthBar" class="pwd-strength-bar"></div></div>
+              <span id="pwdStrengthText" class="pwd-strength-text" data-level=""></span>
+            </div>
+            <div class="pwd-inline-msg" id="pwdInlineMsg"></div>
+            <ul class="pwd-rules"><li>≥8位</li><li>≥2类字符</li><li>需二次确认</li></ul>
+          </div>
+
+          <div class="form-row">
+            <div class="form-label">确认密码 <span class="req">*</span></div>
+            <div class="form-field">
+              <div class="pwd-box">
+                <button type="button" class="pwd-eye" data-eye="pwd2">👁</button>
+                <input type="password" name="password2" id="pwd2" minlength="8" placeholder="再次输入密码" autocomplete="new-password" required/>
+              </div>
+            </div>
+          </div>
+
+          <div class="form-row">
+            <div class="form-label">地区</div>
+            <div class="form-field region-group">
+              <select name="provinceId" id="provinceSel"></select>
+              <select name="cityId" id="citySel"></select>
+              <select name="zoneId" id="zoneSel"></select>
+            </div>
+          </div>
+
+          <div class="form-row" id="parentUserRow" style="display:none;">
+            <div class="form-label">所属账号 <span class="req">*</span></div>
+            <div class="form-field">
+              <div style="flex:1;display:flex;flex-direction:column;gap:4px;">
+                <input id="parentUserInput" placeholder="搜索总帐号 (roleId=2)"/>
+                <div id="parentSearchResult" class="parent-search-list"></div>
+                <div class="hint">仅可选择总帐号；显示: userId 账号 用户名</div>
+              </div>
+              <input type="hidden" name="parentUserId" value="0" />
+            </div>
+          </div>
+
+          <div class="form-row">
+            <div class="form-label">备注</div>
+            <div class="form-field"><textarea name="memo" maxlength="200" placeholder="不超过200字"></textarea></div>
+          </div>
+        </div>
+
+        <div class="bottom-actions">
+          <button type="submit" id="btnSubmitAddUser" class="btn btn-primary" disabled>确认</button>
+          <button type="button" class="btn" data-close>取消</button>
+        </div>
+      </form>
+    </div>
+  </template>
+</body></html>

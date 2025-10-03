@@ -1,0 +1,30 @@
+<!doctype html>
+<html><head><meta charset="utf-8"></head><body>
+  <template id="tpl-role-matrix-panel">
+    <style>
+      .role-matrix { font-size:12px; }
+      .matrix-scroll { max-height:400px; overflow:auto; background:#151d23; padding:8px; border:1px solid #2e3a44; border-radius:6px; }
+      /* 统一滚动条样式（与树状栏一致） */
+      .matrix-scroll { scrollbar-width:thin; scrollbar-color:#33424d #141b20; }
+      .matrix-scroll::-webkit-scrollbar { width:8px; height:8px; }
+      .matrix-scroll::-webkit-scrollbar-track { background:#141b20; }
+      .matrix-scroll::-webkit-scrollbar-thumb { background:#33424d; border-radius:4px; }
+      .matrix-scroll::-webkit-scrollbar-thumb:hover { background:#415464; }
+
+      .matrix-table { width:100%; border-collapse:collapse; }
+      .matrix-table th, .matrix-table td { border-bottom:1px solid #2e3a44; padding:4px 6px; text-align:center; white-space:nowrap; }
+      .matrix-table thead th { background:#202c34; position:sticky; top:0; z-index:1; }
+      .matrix-table input[type="checkbox"] { transform:translateY(1px); }
+    </style>
+
+    <div class="role-matrix">
+      <h3>用户角色权限矩阵</h3>
+      <div class="matrix-scroll">
+        <table class="matrix-table">
+          <thead><tr id="rmHeadRow"><th>角色</th></tr></thead>
+          <tbody id="rmBody"></tbody>
+        </table>
+      </div>
+    </div>
+  </template>
+</body></html>

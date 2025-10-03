@@ -1,0 +1,98 @@
+<!doctype html>
+<html><head><meta charset="utf-8"></head><body>
+  <template id="tpl-users-page">
+    <style>
+      /* 根容器：改为占满父容器（mainView），内部用 flex 分配空间；去掉原来的 min-height:calc(100vh - 120px) */
+      .users-page-root {
+        position:relative;
+        height:100%;
+        min-height:0;
+        display:flex;
+        flex-direction:column;
+        padding:0 0 70px 0; /* 底部留分页浮层空间 */
+      }
+      .users-page-root .page-title-bar {
+        flex:0 0 auto;
+        display:flex; align-items:center; justify-content:space-between;
+        margin:0 0 12px;
+        padding:0 16px;
+      }
+      .users-page-root .actions .btn {
+        background:#24313a; color:#fff; border:1px solid #2e3a44;
+        padding:6px 14px; border-radius:6px; cursor:pointer; font-size:13px;
+      }
+      .users-page-root .actions .btn.btn-primary { background:#0b84d8; border-color:#0b84d8; }
+      .users-page-root .actions .btn.btn-danger  { background:#d64f4f; border-color:#d64f4f; }
+
+      /* 让表格区域自己滚动：flex:1 + min-height:0 + overflow:auto */
+      .users-page-root .table-wrapper {
+        flex:1 1 auto;
+        min-height:0;
+        background:#151d23;
+        border:1px solid #2e3a44;
+        border-radius:8px;
+        overflow:auto;
+      }
+
+      .users-page-root table { width:100%; border-collapse:collapse; font-size:12px; }
+      .users-page-root thead { background:#1f2a32; position:sticky; top:0; z-index:2; }
+      .users-page-root th, .users-page-root td {
+        padding:6px 8px; border-bottom:1px solid #223038; text-align:left; white-space:nowrap;
+      }
+      .users-page-root tbody tr:hover { background:#1b262e; }
+      .users-page-root .dot { display:inline-block; width:10px; height:10px; border-radius:50%; vertical-align:middle; }
+      .users-page-root .dot-green { background:#21c98f; }
+      .users-page-root .dot-gray  { background:#666; }
+      .users-page-root .btn.btn-xs { padding:4px 8px; font-size:12px; margin:0 2px; }
+
+      /* 分页浮层：仍然绝对定位在根容器内部右下角 */
+      .users-page-root .pagination-fixed {
+        position:absolute;
+        right:16px; bottom:16px;
+        display:flex; gap:4px;
+        background:rgba(0,0,0,0.18);
+        backdrop-filter:blur(4px);
+        padding:6px 10px;
+        border-radius:6px;
+      }
+      .users-page-root .pg-btn {
+        background:#25323b; border:1px solid #2e3a44;
+        color:#ddd; cursor:pointer; padding:4px 8px;
+        border-radius:4px; font-size:12px; min-width:30px;
+      }
+      .users-page-root .pg-btn.active,
+      .users-page-root .pg-btn:hover { background:#0b84d8; border-color:#0b84d8; }
+    </style>
+
+    <div class="users-page-root">
+      <div class="page-title-bar">
+        <h2 style="margin:0;font-size:18px;">用户管理</h2>
+        <div class="actions" id="userActions"></div>
+      </div>
+      <div class="table-wrapper user-table-wrapper">
+        <table class="data-table" id="userTable">
+          <thead>
+            <tr>
+              <th><input type="checkbox" id="chkAll"/></th>
+              <th>ID</th>
+              <th>账号</th>
+              <th>用户角色</th>
+              <th>用户名</th>
+              <th>在线</th>
+              <th>上级账号</th>
+              <th>上级名称</th>
+              <th>创建者帐号</th>
+              <th>创建者名称</th>
+              <th>所属地区</th>
+              <th>创建时间</th>
+              <th>备注</th>
+              <th>操作</th>
+            </tr>
+          </thead>
+          <tbody id="userTableBody"></tbody>
+        </table>
+      </div>
+      <div class="pagination pagination-fixed" id="userPagination"></div>
+    </div>
+  </template>
+</body></html>

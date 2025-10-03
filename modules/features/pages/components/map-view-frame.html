@@ -1,0 +1,296 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1"/>
+  <title>MapView Frame</title>
+  <style>
+    html,body,#map{height:100%;margin:0;padding:0;background:#0a0f14}
+    *{box-sizing:border-box}
+    html, body, #map,
+    .amap-canvas, .amap-layer, .amap-marker, .amap-marker-label,
+    .amap-overlay-text, .amap-info { -webkit-user-select:none; -moz-user-select:none; user-select:none; -webkit-touch-callout:none; -webkit-tap-highlight-color:transparent; }
+    img, .amap-marker img { -webkit-user-drag:none; user-drag:none; }
+    .ov-iframe{display:block; width:420px; height:10px; border:0; background:transparent;}
+  </style>
+</head>
+<body>
+  <div id="map"></div>
+  <script>
+    (function(){
+      var AMAP_KEY = '';
+      var SECURITY_JS_CODE = '';
+      var debug = true;
+
+      var log=function(){ if(debug) try{ console.info.apply(console, ["[MapView-IFRAME]"].concat([].slice.call(arguments))); }catch(e){} };
+      var warn=function(){ if(debug) try{ console.warn.apply(console, ["[MapView-IFRAME]"].concat([].slice.call(arguments))); }catch(e){} };
+      var post=function(msg){ try{ parent.postMessage(Object.assign({__mv:true},msg),"*"); }catch(e){} };
+
+      var map=null,markers=[],infoWindow=null, geocoder=null, mounted=false;
+      var infoFrame=null, infoWindowOpen=false;
+      var currentDevInfo=null;
+      var lastInfoPos=null; // { lng, lat }
+
+      // 稳定显示：第一次用户指针进入地图时做一次强制锚定；若用户不动鼠标，定时兜底
+      var firstPointerIn = false;
+      var showAfterStableTimer = null;
+
+      function ensureAMap(cb){
+        if(!AMAP_KEY){ post({t:"error",message:"缺少高德 Key（AMAP_KEY）"}); return; }
+        if(window.AMap){ cb&&cb(); return; }
+        try{ if (SECURITY_JS_CODE) window._AMapSecurityConfig = { securityJsCode: SECURITY_JS_CODE }; }catch(e){}
+        var s=document.createElement("script");
+        s.src="https://webapi.amap.com/maps?v=2.0&key="+encodeURIComponent(AMAP_KEY);
+        s.onload=function(){ cb&&cb(); };
+        s.onerror=function(){ post({t:"error",message:"高德 SDK 加载失败"}); };
+        document.head.appendChild(s);
+      }
+      function ensureGeocoder(cb) {
+        try {
+          if (geocoder) { cb && cb(); return; }
+          if (!window.AMap) return;
+          if (AMap.Geocoder) { geocoder = new AMap.Geocoder(); cb && cb(); }
+          else if (AMap.plugin) { AMap.plugin('AMap.Geocoder', function(){ geocoder = new AMap.Geocoder(); cb && cb(); }); }
+        } catch(e) { warn('geocoder init error', e); }
+      }
+
+      function init(){
+        try{
+          map=new AMap.Map("map",{zoom:5,center:[105,35],viewMode:"2D",dragEnable:true,scrollWheel:true,keyboardEnable:true,doubleClickZoom:true});
+          try{ map.setStatus({dragEnable:true,scrollWheel:true,keyboardEnable:true,doubleClickZoom:true}); }catch(e){}
+          mounted=true;
+          map.on && map.on("complete", function(){ post({t:"ready"}); });
+
+          var clearSel=function(){ try{ var s=window.getSelection && window.getSelection(); if(s&&s.removeAllRanges) s.removeAllRanges(); }catch(e){} };
+          map.on && map.on("click", clearSel, { passive:true });
+          map.on && map.on("mousemove", clearSel, { passive:true });
+          map.on && map.on("dragstart", clearSel, { passive:true });
+          map.on && map.on("zoomstart", clearSel, { passive:true });
+          document.addEventListener("mouseup", clearSel, true);
+
+          // 监听“第一次”指针进入/移动，用于首帧强制锚定 + 淡入
+          var container = document.getElementById('map');
+          if (container) {
+            container.addEventListener('mouseenter', function onceEnter(){
+              if (firstPointerIn) return;
+              firstPointerIn = true;
+              container.removeEventListener('mouseenter', onceEnter);
+              tryStabilizeAndShow('mouseenter');
+            }, { passive:true });
+          }
+          map.on && map.on('mousemove', function onceMove(){
+            if (firstPointerIn) return;
+            firstPointerIn = true;
+            try { map.off && map.off('mousemove', onceMove); } catch(e){}
+            tryStabilizeAndShow('mousemove');
+          }, { passive:true });
+        }catch(e){
+          warn("init error",e); post({t:"error",message:"地图初始化失败"});
+        }
+      }
+
+      function clearMarkers(){ for(var i=0;i<markers.length;i++){ try{ markers[i].setMap(null); }catch(e){} } markers=[]; }
+      function setMarkers(list){
+        if(!mounted) return;
+        clearMarkers();
+        (list||[]).forEach(function(e){
+          var d=e.devInfo||e;
+          if(!d||!d.lastLocation||d.lastLocation.lng==null||d.lastLocation.lat==null) return;
+          var mk=new AMap.Marker({ position:[d.lastLocation.lng,d.lastLocation.lat], title:d.no||d.id, draggable:false, bubble:true });
+          mk.on("click", function(){ post({t:"markerClick", devId:d.id}); });
+          mk.setMap(map); markers.push(mk);
+        });
+      }
+
+      function lockWidth(el){ try{ var r=el.getBoundingClientRect(); el.style.width=Math.round(r.width)+"px"; }catch(e){} }
+      function fmtCoord(lat,lng,isNorth,isEast){
+        var latS = (Math.abs(lat).toFixed(6)) + '°';
+        var lngS = (Math.abs(lng).toFixed(6)) + '°';
+        function ori(bTrue, posChar){ return bTrue===false ? (posChar==='N'?'S':'W') : posChar; }
+        return ori(isNorth,'N') + ' ' + latS + ', ' + ori(isEast,'E') + ' ' + lngS;
+      }
+      function buildData(devInfo){
+        var hasLL = !!(devInfo && devInfo.lastLocation && devInfo.lastLocation.lng!=null && devInfo.lastLocation.lat!=null);
+        var posText = hasLL
+          ? (fmtCoord(devInfo.lastLocation.lat, devInfo.lastLocation.lng, devInfo.lastLocation.isNorth, devInfo.lastLocation.isEast)
+             + (devInfo.lastLocation.height!=null? ('   ' + Number(devInfo.lastLocation.height) + 'm'):''))
+          : "无定位数据";
+        var timeText = devInfo && devInfo.lastLocation ? new Date(devInfo.lastLocation.time).toLocaleString() : "";
+        var speedText = devInfo && devInfo.lastLocation ? ((devInfo.lastLocation.speed||0) + ' km/h') : '';
+        var modeList = Array.isArray(devInfo && devInfo.modeList) ? devInfo.modeList : [];
+        var camCount = (devInfo && devInfo.hardwareInfo && Number(devInfo.hardwareInfo.cameraCount)) || 0;
+        return { devInfo:devInfo||{}, hasLL:hasLL, posText:posText, timeText:timeText, speedText:speedText, modeList:modeList, camCount:camCount };
+      }
+
+      function ensureInfoContent(){
+        if (!infoWindow) infoWindow = new AMap.InfoWindow({
+          isCustom:true,
+          offset:new AMap.Pixel(0,-20),
+          closeWhenClickMap:false,
+          autoMove:false
+        });
+        if (!infoFrame) {
+          var ifr=document.createElement('iframe');
+          ifr.className='ov-iframe';
+          ifr.src='/modules/features/pages/components/map-info-frame.html';
+          ifr.addEventListener('load', function(){
+            setTimeout(function(){ lockWidth(ifr); }, 0);
+            setTimeout(function(){ lockWidth(ifr); }, 60);
+          });
+          // 初次内容未稳定前先透明，稳定后再显示
+          try { ifr.style.opacity='0'; ifr.style.transition='opacity .12s ease-out'; } catch(e){}
+          infoFrame = ifr;
+          infoWindow.setContent(infoFrame);
+        }
+      }
+
+      function sendDataToChild(){
+        try{
+          if (infoFrame && infoFrame.contentWindow) {
+            infoFrame.contentWindow.postMessage({ __iv:true, t:'setData', data: buildData(currentDevInfo) }, '*');
+          }
+        }catch(e){}
+      }
+
+      function defaultPosArray(){
+        if (!lastInfoPos) {
+          try{
+            var c = map.getCenter();
+            lastInfoPos = { lng: Number(c.lng), lat: Number(c.lat) };
+          }catch(e){
+            lastInfoPos = { lng:105, lat:35 };
+          }
+        }
+        return [ lastInfoPos.lng, lastInfoPos.lat ];
+      }
+
+      // 强制锚定 + 显示（淡入）
+      function tryStabilizeAndShow(reason){
+        if (!infoWindowOpen || !infoWindow) return;
+        try {
+          var p = infoWindow.getPosition && infoWindow.getPosition();
+          if (p && p.lng!=null && p.lat!=null) {
+            infoWindow.setPosition([Number(p.lng), Number(p.lat)]);
+          } else {
+            var def = defaultPosArray();
+            infoWindow.setPosition(def);
+          }
+          if (infoFrame && infoFrame.style) infoFrame.style.opacity = '1';
+          if (showAfterStableTimer) { try{ clearTimeout(showAfterStableTimer); }catch(e){} showAfterStableTimer=null; }
+          // log('[ov] stabilize+show by', reason);
+        } catch (e) {}
+      }
+
+      // 打开/更新信息窗：始终“立即 open”，保证必然可见；之后做稳定锚定与淡入
+      function openDevice(devInfo){
+        if(!mounted) return;
+        currentDevInfo = devInfo || {};
+        var hasLL = !!(currentDevInfo && currentDevInfo.lastLocation && currentDevInfo.lastLocation.lng!=null && currentDevInfo.lastLocation.lat!=null);
+        var ll = null;
+        if(hasLL){
+          var __lng = Number(currentDevInfo.lastLocation.lng);
+            var __lat = Number(currentDevInfo.lastLocation.lat);
+          // 经纬度为 0 视为无效：不移动信息窗位置（仅影响锚定位置，其它显示保持）
+          if(!(__lng === 0 || __lat === 0)){
+            ll = [ __lng, __lat ];
+          }
+        }
+
+        ensureInfoContent();
+
+        // 每次新 open/update 前先透明，等稳定后再显示
+        if (infoFrame && infoFrame.style) infoFrame.style.opacity = '0';
+
+        var openAt = ll || defaultPosArray();
+        if (!infoWindowOpen) {
+          try { infoWindow.open(map, openAt); infoWindowOpen = true; } catch(e){}
+          try{
+            var p = infoWindow.getPosition && infoWindow.getPosition();
+            if (p) lastInfoPos = { lng:Number(p.lng), lat:Number(p.lat) };
+          }catch(e){}
+          // 如果用户未移动鼠标，兜底定时强制锚定 + 显示
+          if (!firstPointerIn) {
+            if (showAfterStableTimer) try{ clearTimeout(showAfterStableTimer); }catch(e){}
+            showAfterStableTimer = setTimeout(function(){ tryStabilizeAndShow('open-timer'); }, 500);
+          }
+          // 首帧也尝试一次
+          try { requestAnimationFrame(function(){ tryStabilizeAndShow('raf-open'); }); }catch(e){}
+        } else {
+          // 已打开：仅在 ll 有效（非 0,0）情况下移动
+          if (ll) { try { infoWindow.setPosition(ll); } catch(e){} }
+          // 立即尝试一次稳定 + 显示
+          tryStabilizeAndShow('update-existing');
+        }
+
+        // 把数据发给子页（子页高度变化后也会触发一次稳定显示）
+        sendDataToChild();
+      }
+
+      function setCenter(lng,lat){ try{ map&&map.setCenter([lng,lat]); }catch(e){} }
+      function resize(){ try{ map&&map.resize(); }catch(e){} }
+
+      window.addEventListener('message', function(e){
+        var msg=e.data||{};
+        if (msg && msg.__iv && e.source === (infoFrame && infoFrame.contentWindow)) {
+          switch(msg.t){
+            case 'ready':
+              sendDataToChild();
+              break;
+            case 'height':
+              if (infoFrame) {
+                try{ infoFrame.style.height = Math.max(10, Number(msg.h||0)) + 'px'; }catch(e){}
+              }
+              // 子页高度就绪后再稳定一次
+              tryStabilizeAndShow('height');
+              break;
+            case 'close':
+              try{ infoWindow && infoWindow.close(); infoWindowOpen=false; }catch(e){}
+              break;
+            case 'openDetail':
+              post({ t:'openDetail', devId: msg.devId, devNo: msg.devNo });
+              break;
+            case 'refreshDevice':
+              post({ t:'refreshDevice', devId: msg.devId });
+              break;
+            case 'openVideo':
+              post({ t:'openVideo', devId: msg.devId, devNo: msg.devNo, cameraIndex: msg.cameraIndex, streamType: msg.streamType });
+              break;
+            case 'openMode':
+              post({ t:'openMode', devId: msg.devId, devNo: msg.devNo, modeId: msg.modeId });
+              break;
+            case 'req_show_addr':
+              ensureGeocoder(function(){
+                if (!geocoder) {
+                  try{ infoFrame.contentWindow.postMessage({ __iv:true, t:'res_addr', text:'逆地理失败' }, '*'); }catch(e){}
+                  return;
+                }
+                geocoder.getAddress([msg.lng, msg.lat], function(status, result){
+                  var text = (status === 'complete' && result && result.regeocode && result.regeocode.formattedAddress)
+                    ? result.regeocode.formattedAddress : '未找到地址';
+                  try{ infoFrame.contentWindow.postMessage({ __iv:true, t:'res_addr', text: text }, '*'); }catch(e){}
+                });
+              });
+              break;
+          }
+          return;
+        }
+
+        // 父(上层) -> 本页
+        if(!msg.__mv) return;
+        switch(msg.t){
+          case "init":
+            AMAP_KEY = (msg.key || "").trim();
+            SECURITY_JS_CODE = (msg.securityJsCode || "").trim();
+            debug = !!msg.debug;
+            ensureAMap(init);
+            break;
+          case "setMarkers": setMarkers(msg.list||[]); break;
+          case "openDevice": openDevice(msg.devInfo||{}); break;
+          case "setCenter": setCenter(msg.lng, msg.lat); break;
+          case "resize": resize(); break;
+        }
+      }, { capture:true, passive:true });
+    })();
+  </script>
+</body>
+</html>

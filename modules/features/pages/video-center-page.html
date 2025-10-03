@@ -1,0 +1,110 @@
+<!doctype html>
+<html><head><meta charset="utf-8"></head><body>
+  <template id="tpl-video-center-page">
+    <style>
+      .vc-root{position:absolute;inset:0;display:flex;min-width:0;min-height:0;background:#0d1216;color:#cfd8dc;overflow-anchor:none}
+      .vc-root.left-collapsed .vc-tree-handle{display:flex;}
+
+      .vc-left{width:320px;min-width:240px;max-width:50vw;display:flex;flex-direction:column;min-height:0;border-right:1px solid rgba(255,255,255,.08);position:relative;z-index:10;flex:0 0 auto;transition:none}
+      .vc-left.collapsed{width:0!important;min-width:0!important;border-right:none;overflow:hidden}
+
+      .vc-splitter{width:12px;cursor:col-resize;position:relative;z-index:10;background:transparent}
+      .vc-splitter:hover{background:rgba(255,255,255,.04)}
+      .vc-left.collapsed + .vc-splitter{width:0!important;cursor:default;background:transparent}
+
+      .vc-center{flex:1 1 auto;display:grid;grid-template-rows:auto 1fr;min-width:0;min-height:0}
+      .vc-toolbar{display:flex;align-items:center;gap:10px;padding:8px 10px;background:#0b121a;border-bottom:1px solid rgba(255,255,255,.08)}
+
+      .btn-primary{min-width:90px;height:28px;padding:0 10px;border:1px solid #2b63d6;border-radius:6px;background:#2f80ff;color:#fff;cursor:pointer}
+      .btn-primary:hover{background:#3d89ff}
+
+      /* 树折叠按钮（与现场页一致风格） */
+      .vc-tree-toggle{position:absolute;top:6px;right:6px;width:24px;height:24px;display:flex;align-items:center;justify-content:center;background:#1e272f;color:#cfd8dc;border:1px solid #2b3741;border-radius:4px;cursor:pointer;z-index:30}
+      .vc-tree-toggle:hover{background:#27323a}
+      .vc-tree-handle{position:absolute;top:56px;left:6px;width:24px;height:28px;display:none;align-items:center;justify-content:center;background:#1e272f;color:#cfd8dc;border:1px solid #2b3741;border-radius:4px;cursor:pointer;z-index:40}
+      .vc-tree-handle:hover{background:#27323a}
+
+      /* 宫格按钮 + 弹窗 */
+      .btn-icon{width:32px;height:32px;border:1px solid #2e3a44;border-radius:6px;background:#1a232b;color:#cfd;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0}
+      .btn-icon:hover{background:#21303a}
+      .btn-icon .ico-t{width:22px;height:22px;border-collapse:separate;border-spacing:1px;background:#0d141b;border:2px solid #111;table-layout:fixed;box-shadow:0 0 0 2px #111 inset}
+      .btn-icon .ico-td{padding:0;border:2px solid #000;background:#0d141b}
+      .btn-icon .ico-td.primary{background:#cfd3d8}
+
+      .vc-pop{position:absolute;z-index:2147483646;background:#fff;color:#111;border:1px solid rgba(0,0,0,.15);border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.25);display:none;max-width:560px}
+      .vc-pop.show{display:block}
+      .vc-pop .pop-hd{padding:10px 12px;font-size:13px;border-bottom:1px solid rgba(0,0,0,.06);background:#f7f9fb}
+      .vc-pop .pop-bd{padding:12px}
+
+      /* 弹窗中的宫格图标（表格 + 跨行跨列） */
+      .vc-presets{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
+      .vc-presets button{height:56px;padding:6px;border:1px solid #d0d7de;border-radius:8px;background:#fff;color:#111;cursor:pointer;font-size:12px;display:flex;flex-direction:row;align-items:center;gap:8px}
+      .vc-presets button.active{outline:3px solid #c7d2fe;border-color:#6366f1}
+      .vc-presets .ico-wrap{display:flex;align-items:center;justify-content:center;width:44px}
+      .vc-presets .ico-t{width:40px;height:40px;border-collapse:separate;border-spacing:1px;background:#0d141b;border:2px solid #111;table-layout:fixed;box-shadow:0 0 0 2px #111 inset}
+      .vc-presets .ico-td{padding:0;border:2px solid #000;background:#0d141b}
+      .vc-presets .ico-td.primary{background:#cfd3d8}
+      .vc-presets .num{font-size:14px;min-width:22px;text-align:left}
+
+      /* 主工作区：CSS Grid 跨行跨列，杜绝最后一行/列裁切 */
+      .vc-grid{
+        --gap:10px;
+        box-sizing:border-box;
+        height:100%;
+        padding:10px;
+        display:grid;
+        gap:var(--gap);
+        grid-auto-rows:minmax(0,1fr);
+        align-content:stretch;
+        align-items:stretch;
+        background:#0d1216;
+        min-height:0;
+        overflow:hidden;
+      }
+
+      .vc-cell{background:#111722;border:2px solid #3a4854;border-radius:6px;display:flex;flex-direction:column;min-height:0;overflow:hidden}
+      .vc-hd{display:flex;align-items:center;justify-content:space-between;padding:6px 8px;font-size:12px;background:#0f1b27;border-bottom:1px solid rgba(255,255,255,.08);cursor:pointer;flex:0 0 auto}
+      .vc-bd{position:relative;flex:1 1 auto;min-height:0;background:#000;display:flex;align-items:center;justify-content:center}
+      .vc-bd video, .vc-bd canvas{display:block;width:100%;height:100%;object-fit:fill;background:#000}
+      .vc-hd [data-close]{width:20px;height:20px;border:none;background:transparent;color:#ccd;cursor:pointer}
+      .vc-hd [data-close]:hover{color:#fff}
+
+      /* 空窗：隐藏标题栏，仅纯黑面板 */
+      .vc-cell[aria-empty="1"] .vc-hd{display:none}
+      .vc-cell[aria-empty="1"] .vc-bd{background:#000}
+
+      .vc-pip{position:absolute;right:6px;bottom:6px;width:26%;max-width:40%;min-width:80px;aspect-ratio:16/9;border:2px solid #3a4854;border-radius:4px;overflow:hidden;box-shadow:0 0 0 1px rgba(0,0,0,.45)}
+      .vc-pip > *{width:100%;height:100%}
+    </style>
+
+    <div class="vc-root" id="vcRoot">
+      <div class="vc-left" id="vcLeft">
+        <button type="button" id="vcTreeToggle" class="vc-tree-toggle" title="折叠树状栏">«</button>
+      </div>
+      <div class="vc-splitter" id="vcSplitter" title="拖动调整左侧宽度"></div>
+
+      <button type="button" id="vcTreeHandle" class="vc-tree-handle" title="展开树状栏">»</button>
+
+      <div class="vc-center">
+        <div class="vc-toolbar">
+          <div>视频中心</div>
+          <div style="flex:1 1 auto"></div>
+
+          <!-- 宫格选择按钮（在“全部关闭”之前） -->
+          <button id="vcLayoutBtn" class="btn-icon" title="选择布局"></button>
+          <!-- 弹窗 -->
+          <div id="vcLayoutPop" class="vc-pop" role="dialog" aria-label="选择布局">
+            <div class="pop-hd">请选择布局样式</div>
+            <div class="pop-bd">
+              <div class="vc-presets" id="vcPresets"></div>
+            </div>
+          </div>
+
+          <button id="vcCloseAll" class="btn-primary" title="关闭所有窗口">全部关闭</button>
+        </div>
+
+        <div id="vcGrid" class="vc-grid"></div>
+      </div>
+    </div>
+  </template>
+</body></html>

@@ -1,0 +1,252 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1"/>
+  <title>Device Info</title>
+  <style>
+    html,body{margin:0;padding:0;background:transparent;}
+    *{box-sizing:border-box; -webkit-tap-highlight-color: transparent; user-select:none;}
+
+    .ov-wrap{width:420px;background:#111c28;color:#cfd8dc;border:1px solid rgba(255,255,255,.12);border-radius:8px;box-shadow:0 10px 26px rgba(0,0,0,.5);overflow:hidden;}
+    .ov-hd{
+      /* 修改：两行 -> 三行布局 */
+      display:grid; grid-template-columns:56px 1fr; grid-template-rows:auto auto auto;
+      gap:8px 10px; padding:10px 12px; border-bottom:1px solid rgba(255,255,255,.08); align-items:center;
+    }
+    .ov-ic{grid-column:1/2; grid-row:1/4; width:56px; height:56px; border-radius:10px; background:#17324a center/70% 70% no-repeat; border:1px solid rgba(255,255,255,.1);}
+    .ov-row1{ grid-column:2/3; grid-row:1/2; display:flex; align-items:center; gap:10px; min-width:0; }
+    /* 新增：编号单独一行 */
+    .ov-rowNo{ grid-column:2/3; grid-row:2/3; display:flex; align-items:center; gap:10px; min-width:0; font-size:13px; color:#d4dee4; }
+    /* 行号顺延为第三行 */
+    .ov-row2{ grid-column:2/3; grid-row:3/4; display:flex; align-items:center; gap:10px; min-width:0; }
+
+    .ov-name{font-weight:700; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; min-width:0; flex:1 1 auto;}
+    .ov-status{font-size:12px; padding:2px 6px; border-radius:6px; border:1px solid rgba(255,255,255,.15);}
+    .st-online{background:#11331a;color:#7ef58b;border-color:rgba(126,245,139,.25);}
+    .st-offline{background:#2a2f36;color:#9aa3ab;border-color:rgba(255,255,255,.12);font-size:11px;}
+    .ov-close{background:transparent;border:none;color:#ccd;cursor:pointer;font-size:16px;line-height:1;}
+    .ov-close:hover{color:#fff;}
+
+    .ov-batt{position:relative;flex:0 0 auto;width:62px;height:16px;border:1px solid rgba(255,255,255,.2);border-radius:3px;display:inline-flex;align-items:center;justify-content:center;background:#0f1622;overflow:hidden;}
+    .ov-batt::after{content:'';position:absolute;right:-5px;top:50%;transform:translateY(-50%);width:4px;height:8px;border:1px solid rgba(255,255,255,.2);border-left:none;border-radius:0 2px 2px 0;background:#0f1622;}
+    .ov-batt .batt-fill{position:absolute;left:0;top:0;bottom:0;width:0;border-radius:2px;}
+    .ov-batt .batt-txt{position:relative;font-size:11px;color:#e8f2ff;}
+    .batt-ok .batt-fill{background:#2dbb69;}
+    .batt-mid .batt-fill{background:#d7a43a;}
+    .batt-low .batt-fill{background:#d45b5b;}
+
+    .ov-bd{padding:10px 12px;font-size:12px;line-height:1.8; --label:64px;}
+    .mono{font-family:ui-monospace,SFMono-Regular,Consolas,Monaco,monospace;}
+
+    /* 统一两列基线：第一列固定 64px 标签列 */
+    .row{display:grid; grid-template-columns: var(--label) 1fr auto; column-gap:8px; align-items:center; margin:6px 0;}
+    .row > label{color:#9fb1bb; white-space:nowrap;}
+
+    /* 位置 */
+    .row-pos #posText{min-width:120px;}
+    .row-pos #btnRefresh{justify-self:end;}
+
+    /* 地址：修正为 label | button | text(1fr)，并允许文本收缩换行，按钮保持单行 */
+    .row-addr{
+      align-items:start;
+      grid-template-columns: var(--label) auto 1fr;
+    }
+    .row-addr #btnShowAddr{ white-space:nowrap; }
+    .row-addr #addrText{ min-width:0; white-space:normal; overflow-wrap:anywhere; word-break:break-word; line-height:1.6; }
+
+    /* 时间/速度 */
+    .row-time{grid-template-columns: var(--label) auto auto auto; column-gap:8px;}
+    .row-time label.secondary{min-width:auto; width:auto; justify-self:start;}
+
+    /* 媒体、模式 */
+    .row-media, .row-mode{grid-template-columns: var(--label) auto auto; column-gap:8px;}
+
+    .btn{padding:4px 8px;background:#1f497d;border:1px solid rgba(255,255,255,.15);color:#e6f0ff;border-radius:4px;cursor:pointer;}
+    .btn:disabled{opacity:.6;cursor:not-allowed;}
+    .btn-icon{display:inline-flex;align-items:center;justify-content:center;width:26px;height:26px;border-radius:4px;background:#203246;border:1px solid rgba(255,255,255,.15);cursor:pointer;}
+    .btn-icon svg{width:16px;height:16px;fill:#e6f0ff;}
+    select{background:#15202a;color:#e6f0ff;border:1px solid rgba(255,255,255,.15);border-radius:4px;padding:3px 6px;}
+
+    /* 设备类型占位图，可替换为真实图标 */
+    .dt-1{background-image:url('/res/type1.png');}
+    .dt-2{background-image:url('/res/type2.png');}
+    .dt-3{background-image:url('/res/type3.png');}
+    .dt-4{background-image:url('/res/type4.png');}
+  </style>
+</head>
+<body>
+  <div class="ov-wrap" id="wrap">
+    <div class="ov-hd">
+      <span id="icon" class="ov-ic"></span>
+      <div class="ov-row1">
+        <!-- 设备名称（允许为空也占位） -->
+        <span id="devName" class="ov-name"></span>
+        <div id="batt" class="ov-batt">
+          <span id="battFill" class="batt-fill" style="width:0%;"></span>
+          <span id="battTxt" class="batt-txt">0%</span>
+        </div>
+        <button id="btnClose" class="ov-close" title="关闭">✕</button>
+      </div>
+      <!-- 新增：设备编号独立一行 -->
+      <div class="ov-rowNo">
+        <span id="devNo" class="mono" style="white-space:nowrap; overflow:hidden; text-overflow:ellipsis; flex:1 1 auto;"></span>
+      </div>
+      <div class="ov-row2">
+        <span id="statusPill" class="ov-status st-offline">离线</span>
+        <button id="btnDetail" class="btn" style="margin-left:auto;">详情</button>
+      </div>
+    </div>
+
+    <div class="ov-bd">
+      <div class="row row-pos">
+        <label>位置：</label>
+        <span id="posText" class="mono"></span>
+        <button class="btn-icon" id="btnRefresh" title="刷新">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 6a6 6 0 0 1 5.657 4H16l3.5 3.5L23 10h-2.04A8 8 0 1 0 20 16h-2a6 6 0 1 1-6-10z"/></svg>
+        </button>
+      </div>
+
+      <div id="addrRow" class="row row-addr" style="display:none;">
+        <label></label>
+        <button id="btnShowAddr" class="btn">显示地址</button>
+        <span id="addrText" class="addr-text"></span>
+      </div>
+
+      <div class="row row-time">
+        <label>定位时间：</label><span id="timeText"></span>
+        <label class="secondary">速度：</label><span id="speedText"></span>
+      </div>
+
+      <div id="mediaRow" class="row row-media" style="display:none;">
+        <label>媒体流：</label>
+        <select id="streamSel"><option value="main">主码流</option></select>
+        <button id="btnOpenVideo" class="btn">打开视频</button>
+      </div>
+
+      <div id="modeRow" class="row row-mode" style="display:none;">
+        <label>设备模式：</label>
+        <select id="modeSel"></select>
+        <button id="btnOpenMode" class="btn">打开模式</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    (function(){
+      var state = { devInfo:null, hasLL:false };
+      var heightTimer = null;
+
+      function post(msg){ try{ parent.postMessage(Object.assign({__iv:true},msg),'*'); }catch(e){} }
+      function setTxt(id, v){ var el=document.getElementById(id); if(el) el.textContent = v==null? '' : String(v); }
+      function emitHeight(){ clearTimeout(heightTimer); heightTimer=setTimeout(function(){ post({ t:'height', h: document.documentElement.scrollHeight }); }, 40); }
+
+      function battInfo(v){
+        var n = Number.isFinite(v)? Math.max(0, Math.min(100, Math.floor(v))) : 0;
+        return { n:n, cls: n>=50?'batt-ok':(n>=20?'batt-mid':'batt-low'), text: n + '%' };
+      }
+      function typeClassOf(dev){
+        var t = dev && (dev.type!=null ? String(dev.type) : (dev.typeName||'')); 
+        if (/1$/.test(t)) return 'dt-1';
+        if (/2$/.test(t)) return 'dt-2';
+        if (/3$/.test(t)) return 'dt-3';
+        if (/4$/.test(t)) return 'dt-4';
+        var s=0; String(t).split('').forEach(function(c){ s=(s*131 + c.charCodeAt(0))>>>0; });
+        return 'dt-' + (s%4+1);
+      }
+
+      function applyData(d){
+        state = d || state;
+        var info = state.devInfo || {};
+        var ic=document.getElementById('icon'); ic.className = 'ov-ic ' + typeClassOf(info);
+
+        /* 修改：名称与编号分离；名称允许为空占位 */
+        setTxt('devName', info.name!=null ? info.name : '');
+        setTxt('devNo', info.no || info.devNo || String(info.id||''));
+
+        var b=battInfo(info.battery);
+        var batt=document.getElementById('batt'); batt.classList.remove('batt-ok','batt-mid','batt-low'); batt.classList.add(b.cls);
+        document.getElementById('battFill').style.width = b.n + '%';
+        setTxt('battTxt', b.text);
+        var pill=document.getElementById('statusPill'); pill.textContent = info.onlineState ? '在线' : '离线'; pill.classList.toggle('st-online', !!info.onlineState); pill.classList.toggle('st-offline', !info.onlineState);
+
+        setTxt('posText', state.posText || '');
+        setTxt('timeText', state.timeText || '');
+        setTxt('speedText', state.speedText || '');
+
+        var addrRow=document.getElementById('addrRow');
+        addrRow.style.display = state.hasLL ? '' : 'none';
+        setTxt('addrText', state.addrText || '');
+
+        var mediaRow=document.getElementById('mediaRow');
+        var rawModes = Array.isArray(state.modeList) ? state.modeList : [];
+        var modeIds = rawModes.map(function(m){ return Number(m && (m.modeId!=null ? m.modeId : m.id)); }).filter(function(n){ return Number.isFinite(n); });
+        var hasMedia = modeIds.indexOf(4)!==-1 && state.camCount>0;
+        if (hasMedia) {
+          mediaRow.style.display = '';
+          var sel=document.getElementById('streamSel');
+          sel.innerHTML = state.camCount>=2
+            /* 修改：子码流 -> 副码流 */
+            ? '<option value="main">主码流</option><option value="sub">副码流</option>'
+            : '<option value="main">主码流</option>';
+        } else {
+          mediaRow.style.display = 'none';
+        }
+
+        var modeRow=document.getElementById('modeRow');
+        var filteredModes = rawModes.filter(function(m){
+          var id = Number(m && (m.modeId!=null ? m.modeId : m.id));
+          return id===1||id===2||id===3;
+        });
+        if (filteredModes.length){
+          modeRow.style.display = '';
+          var sel2=document.getElementById('modeSel');
+          sel2.innerHTML = filteredModes.map(function(m){
+            var id = (m && (m.modeId!=null ? m.modeId : m.id!=null ? m.id : '')) + '';
+            var name = (m && (m.modeName || m.name)) ? (m.modeName || m.name) : '';
+            return '<option value="'+ id +'">'+ String(name) +'</option>';
+          }).join('');
+        } else {
+          modeRow.style.display = 'none';
+        }
+        emitHeight();
+      }
+
+      document.getElementById('btnClose').addEventListener('click', function(){ post({ t:'close' }); });
+      document.getElementById('btnDetail').addEventListener('click', function(){
+        var d=state.devInfo||{}; post({ t:'openDetail', devId:(d.id!=null?d.id:d.devId), devNo:(d.no||d.devNo) });
+      });
+      document.getElementById('btnRefresh').addEventListener('click', function(){
+        var d=state.devInfo||{}; post({ t:'refreshDevice', devId:(d.id!=null?d.id:d.devId) });
+      });
+      document.getElementById('btnShowAddr').addEventListener('click', function(){
+        var d=state.devInfo||{}; if (!d.lastLocation) return;
+        post({ t:'req_show_addr', lng:d.lastLocation.lng, lat:d.lastLocation.lat });
+        var addr=document.getElementById('addrText'); addr.textContent='解析中...'; emitHeight();
+      });
+      document.getElementById('btnOpenVideo').addEventListener('click', function(){
+        var d=state.devInfo||{}; var sel=document.getElementById('streamSel');
+        post({ t:'openVideo', devId:(d.id!=null?d.id:d.devId), devNo:(d.no||d.devNo), cameraIndex:1, streamType: sel? String(sel.value||'main') : 'main' });
+      });
+      document.getElementById('btnOpenMode').addEventListener('click', function(){
+        var d=state.devInfo||{}; var sel=document.getElementById('modeSel');
+        post({ t:'openMode', devId:(d.id!=null?d.id:d.devId), devNo:(d.no||d.devNo), modeId: sel && sel.value });
+      });
+
+      window.addEventListener('message', function(e){
+        var msg=e.data||{}; if(!msg.__iv) return;
+        switch(msg.t){
+          case 'setData': applyData(msg.data||{}); break;
+          case 'res_addr':
+            document.getElementById('addrText').textContent = msg.text || '未找到地址';
+            emitHeight();
+            break;
+        }
+      });
+
+      post({ t:'ready' });
+      try{ new ResizeObserver(function(){ emitHeight(); }).observe(document.body); }catch(e){}
+    })();
+  </script>
+</body>
+</html>

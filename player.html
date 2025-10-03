@@ -1,0 +1,731 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>SRS WebRTC 播放器（全屏防闪烁 + 小窗保持比例 + 全屏退出自动回归）</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<link rel="stylesheet" href="css/bootstrap.min.css">
+<script src="js/jquery-1.12.2.min.js"></script>
+<script src="js/adapter-7.4.0.min.js"></script>
+<script src="js/srs.sdk.js"></script>
+<script src="js/winlin.utility.js"></script>
+<script src="js/srs.page.js"></script>
+<style>
+body{margin:0;background:#111;color:#eee;font-family:Arial,Helvetica,sans-serif;}
+.page-wrap{padding:12px;max-width:1400px;margin:0 auto;}
+h3{margin:10px 0 12px;font-size:20px;font-weight:600;}
+.stream-inputs{display:flex;flex-wrap:wrap;gap:12px;align-items:center;margin-bottom:10px;}
+.stream-box{display:flex;align-items:center;gap:6px;background:#1e1e1e;padding:6px 10px;border-radius:6px;border:1px solid #2c2c2c;}
+.stream-box label{font-size:12px;opacity:.85;margin:0;white-space:nowrap;}
+.stream-box input{width:320px;max-width:42vw;background:#000;border:1px solid #444;color:#fff;padding:4px 6px;font-size:12px;border-radius:4px;outline:none;}
+.stream-box button{background:#2d8cff;border:none;font-size:12px;padding:5px 12px;color:#fff;border-radius:4px;cursor:pointer;}
+.stream-box button:hover{background:#1474e2;}
+#video_container{position:relative;width:1080px;max-width:100%;height:608px;background:#000;overflow:hidden;user-select:none;border:1px solid #222;}
+:fullscreen #video_container,#video_container:fullscreen{width:100vw !important;height:100vh !important;}
+.slot{position:absolute;top:0;left:0;}
+.slot.main{width:100%;height:100%;z-index:1;}
+.slot.pip{
+    width:260px;height:146px;z-index:3;
+    right:16px;bottom:96px;left:auto;top:auto;
+    border:2px solid rgba(255,255,255,.35);border-radius:4px;
+    box-shadow:0 4px 14px rgba(0,0,0,.6);
+    overflow:hidden;cursor:move;background:#000;
+    will-change:transform;
+}
+.slot.dragging{pointer-events:none;}
+.slot canvas,.slot video{position:absolute;top:0;left:0;width:100%;height:100%;}
+.slot video{opacity:0;pointer-events:none;}
+#pip_placeholder{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);font-size:12px;color:#bbb;text-align:center;pointer-events:none;}
+.swap-anim{transition:transform .35s ease, opacity .35s ease;will-change:transform;}
+.controls-overlay{position:absolute;left:0;right:0;bottom:0;padding:6px 10px 10px;display:flex;justify-content:space-between;align-items:flex-end;background:linear-gradient(to top,rgba(0,0,0,.7),rgba(0,0,0,0));opacity:0;pointer-events:none;transition:opacity .25s;z-index:5;}
+#video_container.show-controls .controls-overlay{opacity:1;pointer-events:auto;}
+.left-controls,.right-controls{display:flex;align-items:center;gap:10px;}
+.ctrl-btn{width:34px;height:34px;background:rgba(255,255,255,.12);border:none;color:#fff;border-radius:5px;display:flex;justify-content:center;align-items:center;cursor:pointer;position:relative;padding:0;transition:background .2s;}
+.ctrl-btn:hover{background:rgba(255,255,255,.32);}
+.ctrl-btn svg{width:20px;height:20px;fill:#fff;pointer-events:none;}
+.ctrl-btn[data-tip]:hover:after{content:attr(data-tip);position:absolute;bottom:110%;left:50%;transform:translateX(-50%);background:rgba(0,0,0,.75);padding:3px 6px;font-size:11px;border-radius:3px;white-space:nowrap;pointer-events:none;}
+.volume-group{display:flex;align-items:center;position:relative;}
+.volume-slider{width:120px;margin-left:6px;opacity:0;visibility:hidden;transition:opacity .25s;}
+.volume-group:hover .volume-slider,.volume-slider:hover{opacity:1;visibility:visible;}
+.volume-slider input[type=range]{width:100%;height:6px;background:#444;border-radius:3px;-webkit-appearance:none;appearance:none;outline:none;}
+.volume-slider input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;height:14px;background:#fff;border-radius:50%;cursor:pointer;}
+.volume-slider input[type=range]::-moz-range-thumb{width:14px;height:14px;background:#fff;border-radius:50%;border:none;cursor:pointer;}
+#info_panel{position:absolute;top:12px;left:12px;background:rgba(0,0,0,.55);padding:10px 14px;font-size:12px;line-height:1.5;border-radius:6px;min-width:200px;max-width:340px;display:none;z-index:6;backdrop-filter:blur(2px);white-space:nowrap;}
+#info_panel h4{margin:0 0 4px;font-size:13px;font-weight:600;}
+.info-row{display:flex;justify-content:space-between;gap:14px;}
+.badge-role{display:inline-block;padding:1px 6px;font-size:10px;background:#2d8cff;border-radius:10px;margin-left:6px;vertical-align:middle;}
+.badge-role.secondary{background:#888;}
+@media (max-width:900px){
+    #video_container{height:56.25vw;}
+    .slot.pip{width:180px;height:101px;}
+}
+</style>
+</head>
+<body>
+<div class="page-wrap">
+    <h3>WebRTC 播放器（全屏防闪烁 + 自动收回小窗）</h3>
+    <input id="txt_url" type="hidden" value="">
+    <div class="stream-inputs">
+        <div class="stream-box">
+            <label for="url_main">主流URL</label>
+            <input id="url_main" placeholder="主流播放地址">
+            <button id="btn_start_main">播放主流</button>
+        </div>
+        <div class="stream-box">
+            <label for="url_sub">副流URL</label>
+            <input id="url_sub" placeholder="副流播放地址">
+            <button id="btn_start_sub">播放副流</button>
+        </div>
+    </div>
+
+    <div id="video_container">
+        <div id="info_panel"></div>
+        <div class="slot main" id="slot_main"></div>
+        <div class="slot pip" id="slot_pip" style="display:none;">
+            <div id="pip_placeholder">副流小窗</div>
+        </div>
+        <div class="controls-overlay" id="controls_overlay">
+            <div class="left-controls">
+                <div class="volume-group">
+                    <button class="ctrl-btn" id="btn_mute" data-tip="音量/静音">
+                        <svg id="icon_volume" viewBox="0 0 24 24"><path d="M3 10v4h4l5 5V5L7 10H3zm13.5 2c0-1.77-1.02-3.29-2.5-4.03v8.06c1.48-.74 2.5-2.26 2.5-4.03z"/></svg>
+                        <svg id="icon_volume_off" viewBox="0 0 24 24" style="display:none"><path d="M16.5 12c0 1.77-1.02 3.29-2.5 4.03V7.97c1.48.74 2.5 2.26 2.5 4.03zM4.27 3 3 4.27 7.73 9H3v6h4l5 5v-6.73l4.25 4.26c-.67.52-1.42.93-2.25 1.17v2.07c1.38-.32 2.63-.99 3.68-1.92L19.73 21 21 19.73 4.27 3zM14 3.23v2.06c2.89.86 5 3.54 5 6.71 0 1.05-.25 2.05-.69 2.94l1.53 1.53A9.822 9.822 0 0 0 21 12c0-4.17-2.89-7.85-7-8.77z"/></svg>
+                    </button>
+                    <div class="volume-slider"><input id="volume_slider" type="range" min="0" max="1" step="0.01" value="1"></div>
+                </div>
+            </div>
+            <div class="right-controls">
+                <button class="ctrl-btn" id="btn_switch" data-tip="切换主/副画面" style="display:none;">
+                    <svg viewBox="0 0 24 24"><path d="M4 18h7v-2H6V6H4v12zm16-2V4H11v12h9zm0 2h-9v2h11V6h-2v12z"/></svg>
+                </button>
+                <button class="ctrl-btn" id="btn_info" data-tip="信息">
+                    <svg viewBox="0 0 24 24"><path d="M11 7h2v2h-2V7zm0 4h2v6h-2v-6zm1-9C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2z"/></svg>
+                </button>
+                <button class="ctrl-btn" id="btn_rotate" data-tip="旋转90°">
+                    <svg viewBox="0 0 24 24"><path d="M12 6v3l4-4-4-4v3c-4.42 0-8 3.58-8 8 0 1.57.46 3.03 1.24 4.26l1.46-1.46A5.97 5.97 0 0 1 6 12c0-3.31 2.69-6 6-6zm6.76 1.74-1.46 1.46c.47.89.7 1.9.7 2.8 0 3.31-2.69 6-6 6v-3l-4 4 4 4v-3c4.42 0 8-3.58 8-8 0-1.57-.46-3.03-1.24-4.26z"/></svg>
+                </button>
+                <button class="ctrl-btn" id="btn_fit_fill" data-tip="自适应/填充">
+                    <svg id="icon_fit" viewBox="0 0 24 24"><path d="M4 4h7v2H6v5H4V4zm16 0v7h-2V6h-5V4h7zm0 16h-7v-2h5v-5h2v7zM4 20v-7h2v5h5v2H4z"/></svg>
+                    <svg id="icon_fill" viewBox="0 0 24 24" style="display:none"><path d="M7 7h10v10H7z"/><path d="M5 5v14h14V5H5zm12 12H7V7h10v10z"/></svg>
+                </button>
+                <button class="ctrl-btn" id="btn_fullscreen" data-tip="全屏">
+                    <svg id="icon_fullscreen" viewBox="0 0 24 24"><path d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zm-3-12v2h3v3h2V5h-5z"/></svg>
+                    <svg id="icon_fullscreen_exit" viewBox="0 0 24 24" style="display:none"><path d="M5 16h3v3h2v-5H5v2zm3-8H5v2h5V5H8v3zm6 11h2v-3h3v-2h-5v5zm2-11V5h-2v5h5V8h-3z"/></svg>
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+/* ================= 调试工具与环境日志 ================= */
+(function(){
+    const DBG_PREFIX='RTC7';
+    const pad2=n=>('0'+n).slice(-2);
+    function ts(){const d=new Date();return [pad2(d.getHours()),pad2(d.getMinutes()),pad2(d.getSeconds())].join(':')+'.'+(d.getMilliseconds()+'').padStart(3,'0');}
+    const logger={
+        enabled:true,
+        d(tag,...a){ if(!this.enabled) return; try{console.log(`[${DBG_PREFIX} ${ts()}][${tag}]`,...a);}catch(_){} },
+        i(tag,...a){ if(!this.enabled) return; try{console.info(`[${DBG_PREFIX} ${ts()}][${tag}]`,...a);}catch(_){} },
+        w(tag,...a){ if(!this.enabled) return; try{console.warn(`[${DBG_PREFIX} ${ts()}][${tag}]`,...a);}catch(_){} },
+        e(tag,...a){ if(!this.enabled) return; try{console.error(`[${DBG_PREFIX} ${ts()}][${tag}]`,...a);}catch(_){} },
+    };
+    window.__RTC_LOGGER__=logger;
+
+    // 环境与脚本加载
+    const scripts=[].map.call(document.scripts,s=>s.src||'(inline)');
+    logger.i('ENV','UserAgent =', navigator.userAgent);
+    logger.i('ENV','Scripts loaded =', scripts);
+    logger.i('ENV','Adapter exists =', !!window.adapter);
+    logger.i('ENV','SrsRtcPlayerAsync exists =', typeof window.SrsRtcPlayerAsync==='function');
+})();
+
+/* ================= 全屏防闪烁渲染循环 ================= */
+function makeRenderLoop(draw){
+    let run=false;
+    function loop(){ if(!run) return; draw(); requestAnimationFrame(loop); }
+    return { start(){ if(!run){run=true; requestAnimationFrame(loop);} }, stop(){ run=false; } };
+}
+
+/* ================= SDP 解析辅助 ================= */
+function parseH264ParamsFromSdp(sdp){
+    const lines=(sdp||'').split(/\r?\n/);
+    const h264Pts=[];
+    const fmtpByPt={};
+    for(let i=0;i<lines.length;i++){
+        const l=lines[i];
+        const m=l.match(/^a=rtpmap:(\d+)\s+H264\/90000/i);
+        if(m) h264Pts.push(m[1]);
+        const f=l.match(/^a=fmtp:(\d+)\s+(.*)$/i);
+        if(f) fmtpByPt[f[1]]=f[2];
+    }
+    const arr=[];
+    for(const pt of h264Pts){
+        const params=(fmtpByPt[pt]||'').split(';').map(s=>s.trim());
+        const map={pt};
+        params.forEach(kv=>{
+            const [k,v]=kv.split('=');
+            if(k) map[k.trim()]=(v||'').trim();
+        });
+        arr.push(map);
+    }
+    return arr;
+}
+function sdpHasVideo(sdp){
+    return /m=video\s+\d+\s+[\w/ ]+\s+/i.test(sdp||'');
+}
+function sdpDirectionForVideo(sdp){
+    const m = (sdp||'').match(/m=video[\s\S]*?(?=m=|$)/i);
+    if(!m) return '';
+    const block=m[0];
+    const dir=block.match(/a=(sendrecv|sendonly|recvonly|inactive)/i);
+    return dir?dir[1].toLowerCase():'';
+}
+
+/* ================= RTCPeerConnection 调试监听 ================= */
+function attachPcDebug(pc, tag){
+    const log=window.__RTC_LOGGER__;
+    if(!pc){ log.w(tag,'attachPcDebug: pc is null'); return; }
+    try{
+        pc.addEventListener('signalingstatechange',()=>log.i(tag,'signalingState =', pc.signalingState));
+        pc.addEventListener('icegatheringstatechange',()=>log.i(tag,'iceGatheringState =', pc.iceGatheringState));
+        pc.addEventListener('iceconnectionstatechange',()=>log.i(tag,'iceConnectionState =', pc.iceConnectionState));
+        pc.addEventListener('connectionstatechange',()=>log.i(tag,'connectionState =', pc.connectionState));
+        pc.addEventListener('icecandidateerror',e=>log.w(tag,'icecandidateerror', e.errorCode, e.errorText||e.url||'' ));
+        pc.addEventListener('track',e=>{
+            log.i(tag,'ontrack kind=', e.track&&e.track.kind, 'streams=', e.streams&&e.streams.length);
+        });
+
+        // SDP 概览
+        setTimeout(()=>{
+            const ld=pc.localDescription, rd=pc.remoteDescription;
+            if(ld){
+                log.i(tag,'Local SDP has m=video:', sdpHasVideo(ld.sdp), 'dir:', sdpDirectionForVideo(ld.sdp));
+                const h264=parseH264ParamsFromSdp(ld.sdp);
+                if(h264.length) log.i(tag,'Local H264 fmtp:', h264);
+            }else{
+                log.w(tag,'LocalDescription not set yet');
+            }
+            if(rd){
+                log.i(tag,'Remote SDP has m=video:', sdpHasVideo(rd.sdp), 'dir:', sdpDirectionForVideo(rd.sdp));
+                const h264=parseH264ParamsFromSdp(rd.sdp);
+                if(h264.length) log.i(tag,'Remote H264 fmtp:', h264);
+            }else{
+                log.w(tag,'RemoteDescription not set yet');
+            }
+        }, 0);
+
+        // 选中候选对/RTT 快照
+        pc.getStats().then(rs=>{
+            let pair=null, local=null, remote=null;
+            rs.forEach(r=>{
+                if(r.type==='transport' && r.selectedCandidatePairId){
+                    pair=rs.get(r.selectedCandidatePairId);
+                }
+            });
+            if(!pair){
+                rs.forEach(r=>{
+                    if(r.type==='candidate-pair' && (r.selected||r.nominated)) pair=r;
+                });
+            }
+            if(pair){
+                local=rs.get && rs.get(pair.localCandidateId);
+                remote=rs.get && rs.get(pair.remoteCandidateId);
+                log.i(tag,'Selected pair:', {
+                    state: pair.state, nominated: pair.nominated, currentRTT: pair.currentRoundTripTime,
+                    local: local? {type:local.candidateType, ip:local.ip||local.address, protocol:local.protocol}:{},
+                    remote: remote? {type:remote.candidateType, ip:remote.ip||remote.address, protocol:remote.protocol}:{},
+                });
+            }else{
+                log.w(tag,'No selected candidate pair yet');
+            }
+        }).catch(e=>log.w(tag,'getStats pair error', e));
+    }catch(e){
+        log.w(tag,'attachPcDebug error', e);
+    }
+}
+
+/* ================= Player 封装 ================= */
+function createRtcCanvasPlayer(isPip,onResolution){
+    const TAG = isPip ? 'SUB' : 'MAIN';
+    const log = window.__RTC_LOGGER__;
+    const video=document.createElement('video');
+    video.autoplay=true; video.muted=true; video.playsInline=true;
+    video.style.position='absolute'; video.style.top='0'; video.style.left='0';
+    video.style.width='1px'; video.style.height='1px'; video.style.opacity='0';
+    document.body.appendChild(video);
+
+    // video 事件监控
+    ['loadedmetadata','resize','playing','pause','waiting','stalled','suspend','abort','emptied','ended','error']
+      .forEach(ev=>video.addEventListener(ev, e=>{
+          if(ev==='error'){ const err=video.error; log.w(TAG,'video error', err&&err.code, err&&err.message); }
+          else log.d(TAG,`video event: ${ev}`, {w:video.videoWidth,h:video.videoHeight,ready:video.readyState});
+      }));
+
+    const canvas=document.createElement('canvas');
+    const ctx=canvas.getContext('2d');
+    canvas.width=1280; canvas.height=720;
+
+    let sdk=null, rotation=0, mode='fit';
+    let stats={width:0,height:0,fps:0,vbit:0,abit:0, _hasV:false, _hasA:false};
+
+    const loop=makeRenderLoop(()=>{
+        const dispW=canvas.clientWidth||canvas.width;
+        const dispH=canvas.clientHeight||canvas.height;
+        const vw=video.videoWidth, vh=video.videoHeight;
+        if(!vw||!vh) return;
+
+        ctx.save();
+        ctx.clearRect(0,0,canvas.width,canvas.height);
+        ctx.translate(canvas.width/2,canvas.height/2);
+        ctx.rotate(rotation*Math.PI/180);
+
+        let videoW=vw, videoH=vh;
+        if(rotation%180!==0) [videoW,videoH]=[videoH,videoW];
+
+        let drawW=dispW, drawH=dispH;
+        if(!isPip){
+            if(mode==='fit'){
+                const vr=videoW/videoH, cr=dispW/dispH;
+                if(vr>cr){ drawW=dispW; drawH=dispW/vr; } else { drawH=dispH; drawW=dispH*vr; }
+            }
+        }
+
+        const scaleX=canvas.width/dispW;
+        const scaleY=canvas.height/dispH;
+
+        if(rotation%180===0){
+            ctx.drawImage(video,-drawW/2*scaleX,-drawH/2*scaleY,drawW*scaleX,drawH*scaleY);
+        }else{
+            ctx.drawImage(video,-drawH/2*scaleX,-drawW/2*scaleY,drawH*scaleX,drawW*scaleY);
+        }
+        ctx.restore();
+    });
+
+    function collectStats(pc){
+        let last={};
+        let firstVideoLogged=false;
+        setInterval(()=>pc && pc.getStats().then(rs=>{
+            rs.forEach(r=>{
+                if(r.type==='inbound-rtp'&&r.kind==='video'){
+                    stats._hasV=true;
+                    const bytes=r.bytesReceived, frames=r.framesDecoded;
+                    const dBytes=last.v?bytes-last.v:0;
+                    const dFrames=last.f?frames-last.f:0;
+                    const w=r.frameWidth||0, h=r.frameHeight||0;
+                    stats.vbit=(dBytes*8/1000).toFixed(1);
+                    stats.fps=dFrames;
+                    if((w&&h)&&(w!==stats.width||h!==stats.height)){
+                        stats.width=w; stats.height=h;
+                        onResolution && onResolution(w,h,rotation);
+                    }else{
+                        stats.width=w; stats.height=h;
+                    }
+                    if(!firstVideoLogged && (w||h||frames>0)){
+                        firstVideoLogged=true;
+                        window.__RTC_LOGGER__.i(TAG,'inbound video detected',{w,h,fps:stats.fps, vkbps:stats.vbit});
+                    }
+                    last.v=bytes; last.f=frames;
+                }
+                if(r.type==='inbound-rtp'&&r.kind==='audio'){
+                    stats._hasA=true;
+                    const bytes=r.bytesReceived;
+                    const d=last.a?bytes-last.a:0;
+                    stats.abit=(d*8/1000).toFixed(1);
+                    last.a=bytes;
+                }
+            });
+        }).catch(e=>{
+            window.__RTC_LOGGER__.w(TAG,'getStats error', e);
+        }),1000);
+    }
+
+    async function play(url){
+        log.i(TAG,'play() start, url =', url);
+        if(sdk){ try{sdk.close();}catch(_){} sdk=null; }
+        sdk=new SrsRtcPlayerAsync();
+        log.i(TAG,'SrsRtcPlayerAsync created:', !!sdk);
+        video.srcObject=sdk.stream;
+
+        // 守护：6s 内没有 inbound-rtp(video) 给出提示
+        let watchdogTimer=null;
+        function startWatchdog(){
+            const t0=Date.now();
+            watchdogTimer=setInterval(()=>{
+                const elapse=(Date.now()-t0)/1000;
+                if(elapse>=6){
+                    if(!stats._hasV){
+                        log.w(TAG,'No inbound-rtp(video) detected within 6s. Likely not negotiated/subscribed. Check: (1) page requests video? (addTransceiver recvonly / offerToReceiveVideo) (2) URL params video=1 (3) encoder/codec H264 fmtp mismatch');
+                    }
+                    clearInterval(watchdogTimer); watchdogTimer=null;
+                }else{
+                    // 若音频到了但视频没到，也提示一次
+                    if(stats._hasA && !stats._hasV && elapse>=4){
+                        log.w(TAG,'Audio inbound but NO video inbound yet (4s). Suspect video not negotiated.');
+                    }
+                }
+            }, 1000);
+        }
+
+        try{
+            startWatchdog();
+            await sdk.play(url);
+            log.i(TAG,'sdk.play() resolved');
+            // 绑定 PC 调试
+            if(sdk.pc){
+                attachPcDebug(sdk.pc, TAG);
+            }else{
+                log.w(TAG,'sdk.pc is not available after play()');
+            }
+            // 启动渲染与统计
+            loop.start();
+            collectStats(sdk.pc);
+        }catch(e){
+            log.e(TAG,'sdk.play() failed', e);
+            if(sdk){try{sdk.close();}catch(_){} sdk=null;}
+        }
+    }
+
+    return {
+        canvas, play,
+        rotate:()=>{rotation=(rotation+90)%360; onResolution && onResolution(stats.width,stats.height,rotation); window.__RTC_LOGGER__.i(TAG,'rotate', rotation);},
+        toggleMode:()=>{mode=(mode==='fit'?'fill':'fit'); window.__RTC_LOGGER__.i(TAG,'mode ->', mode);},
+        getMode:()=>mode, getRotation:()=>rotation,
+        getStats:()=>({...stats}),
+        mute:(m)=>{video.muted=m; window.__RTC_LOGGER__.i(TAG,'mute', m);}, setVolume:(v)=>{video.volume=v; window.__RTC_LOGGER__.i(TAG,'volume', v);},
+        getVideoEl:()=>video,
+        attachToSlot:(slot)=>{slot.appendChild(canvas); window.__RTC_LOGGER__.i(TAG,'attachToSlot', slot&&slot.id);},
+        isPip:()=>isPip, setPip:(v)=>{isPip=v; window.__RTC_LOGGER__.i(TAG,'setPip', v);}
+    };
+}
+
+/* ================= DOM & 状态 ================= */
+const container=document.getElementById('video_container');
+const slotMain=document.getElementById('slot_main');
+const slotPip=document.getElementById('slot_pip');
+const pipPlaceholder=document.getElementById('pip_placeholder');
+
+const btnStartMain=document.getElementById('btn_start_main');
+const btnStartSub=document.getElementById('btn_start_sub');
+const inputMain=document.getElementById('url_main');
+const inputSub=document.getElementById('url_sub');
+
+const btnMute=document.getElementById('btn_mute');
+const iconVol=document.getElementById('icon_volume');
+const iconVolOff=document.getElementById('icon_volume_off');
+const volumeSlider=document.getElementById('volume_slider');
+
+const btnSwitch=document.getElementById('btn_switch');
+const btnInfo=document.getElementById('btn_info');
+const btnRotate=document.getElementById('btn_rotate');
+const btnFitFill=document.getElementById('btn_fit_fill');
+const iconFit=document.getElementById('icon_fit');
+const iconFill=document.getElementById('icon_fill');
+const btnFullscreen=document.getElementById('btn_fullscreen');
+const iconFS=document.getElementById('icon_fullscreen');
+const iconFSExit=document.getElementById('icon_fullscreen_exit');
+const infoPanel=document.getElementById('info_panel');
+
+let pipUserMoved=false;
+let subVisible=false;
+
+/* ================= 播放器实例 ================= */
+const playerA=createRtcCanvasPlayer(false);
+const playerB=createRtcCanvasPlayer(true,onSmallResolution);
+let bigPlayer=playerA;
+let smallPlayer=playerB;
+playerA.attachToSlot(slotMain);
+
+/* 小窗分辨率适配 */
+function onSmallResolution(w,h,rot){
+    if(!subVisible) return;
+    if(!smallPlayer.isPip()) return;
+    if(pipUserMoved) return;
+    adjustPipSize(w,h,rot);
+    ensurePipInBounds(true);
+}
+
+function adjustPipSize(w,h,rot){
+    if(!w||!h) return;
+    if(rot%180!==0) [w,h]=[h,w];
+    const maxW=300,maxH=200;
+    let aspect=w/h;
+    let tw=maxW, th=tw/aspect;
+    if(th>maxH){th=maxH; tw=th*aspect;}
+    tw=Math.round(tw); th=Math.round(th);
+    slotPip.style.width=tw+'px';
+    slotPip.style.height=th+'px';
+}
+
+/* ================= 控制条显示隐藏 ================= */
+function showControls(autoHide=true){
+    container.classList.add('show-controls');
+    if(showControls._timer) clearTimeout(showControls._timer);
+    if(autoHide) showControls._timer=setTimeout(()=>container.classList.remove('show-controls'),2500);
+}
+container.addEventListener('mousemove',()=>showControls(true));
+container.addEventListener('mouseleave',()=>container.classList.remove('show-controls'));
+showControls(true);
+
+/* ================= 音量/静音 ================= */
+function refreshVolumeUI(){
+    const v=bigPlayer.getVideoEl();
+    if(v.muted||v.volume===0){iconVol.style.display='none';iconVolOff.style.display='';}
+    else{iconVol.style.display='';iconVolOff.style.display='none';}
+    volumeSlider.value=v.volume;
+}
+btnMute.addEventListener('click',()=>{const v=bigPlayer.getVideoEl();v.muted=!v.muted;refreshVolumeUI(); window.__RTC_LOGGER__.i('UI','toggle mute ->', v.muted);});
+volumeSlider.addEventListener('input',()=>{
+    const val=parseFloat(volumeSlider.value);
+    bigPlayer.setVolume(val);
+    if(val>0) bigPlayer.mute(false);
+    refreshVolumeUI();
+});
+
+/* ================= 模式/旋转 ================= */
+function refreshModeIcon(){
+    if(bigPlayer.getMode()==='fit'){iconFit.style.display='';iconFill.style.display='none';btnFitFill.setAttribute('data-tip','自适应');}
+    else{iconFit.style.display='none';iconFill.style.display='';btnFitFill.setAttribute('data-tip','填充');}
+}
+btnFitFill.addEventListener('click',()=>{bigPlayer.toggleMode();refreshModeIcon();});
+btnRotate.addEventListener('click',()=>bigPlayer.rotate());
+
+/* ================= 全屏 ================= */
+btnFullscreen.addEventListener('click',()=>{
+    window.__RTC_LOGGER__.i('UI','fullscreen toggle');
+    if(!document.fullscreenElement){container.requestFullscreen&&container.requestFullscreen();}
+    else{document.exitFullscreen&&document.exitFullscreen();}
+});
+
+/* 全屏变化：退出后保证小窗在可视区内 */
+document.addEventListener('fullscreenchange',()=>{
+    const fs=!!document.fullscreenElement;
+    iconFS.style.display=fs?'none':'';
+    iconFSExit.style.display=fs?'':'none';
+    window.__RTC_LOGGER__.i('UI','fullscreenchange', fs);
+    if(!fs){
+        // 立即 & 延迟再检查，确保布局回收完成
+        ensurePipInBounds(true);
+        requestAnimationFrame(()=>ensurePipInBounds(true));
+        setTimeout(()=>ensurePipInBounds(true),120);
+    }
+});
+
+/* 使用 ResizeObserver 监控容器尺寸变化（包括全屏返回） */
+new ResizeObserver(()=>ensurePipInBounds(true)).observe(container);
+
+/* ================= 信息面板 ================= */
+btnInfo.addEventListener('click',()=>{
+    if(infoPanel.style.display==='none'||!infoPanel.style.display){infoPanel.style.display='block';updateInfoPanel();}
+    else infoPanel.style.display='none';
+});
+function updateInfoPanel(){
+    if(infoPanel.style.display==='none') return;
+    const sBig=bigPlayer.getStats();
+    let html=`<h4>大画面 <span class="badge-role">${bigPlayer===playerA?'主流':'副流'}</span></h4>`;
+    html+=statsLines(sBig,bigPlayer);
+    if(subVisible){
+        const sSmall=smallPlayer.getStats();
+        html+=`<h4 style="margin-top:6px;">小画面 <span class="badge-role secondary">${smallPlayer===playerA?'主流':'副流'}</span></h4>`;
+        html+=statsLines(sSmall,smallPlayer);
+    }
+    infoPanel.innerHTML=html;
+}
+function statsLines(st,p){
+    return `<div class="info-row"><span>分辨率</span><span>${st.width}x${st.height}</span></div>
+            <div class="info-row"><span>帧率</span><span>${st.fps||'-'} fps</span></div>
+            <div class="info-row"><span>视频码率</span><span>${st.vbit||'-'} kbps</span></div>
+            <div class="info-row"><span>音频码率</span><span>${st.abit||'-'} kbps</span></div>
+            <div class="info-row"><span>模式</span><span>${p.getMode()}</span></div>
+            <div class="info-row"><span>旋转</span><span>${p.getRotation()}°</span></div>`;
+}
+setInterval(updateInfoPanel,1000);
+
+/* ================= 播放主流 ================= */
+btnStartMain.addEventListener('click',()=>{
+    const url=inputMain.value.trim();
+    window.__RTC_LOGGER__.i('UI','play main clicked:', url);
+    if(!url){alert('请输入主流URL');return;}
+    playerA.play(url);
+});
+inputMain.addEventListener('keydown',e=>{if(e.key==='Enter')btnStartMain.click();});
+
+/* ================= 播放副流 ================= */
+btnStartSub.addEventListener('click',()=>{
+    const url=inputSub.value.trim();
+    window.__RTC_LOGGER__.i('UI','play sub clicked:', url);
+    if(!url){alert('请输入副流URL');return;}
+    pipUserMoved=false;
+    playerB.play(url);
+    if(!subVisible){
+        smallPlayer=playerB;
+        playerB.attachToSlot(slotPip);
+        slotPip.style.display='';
+        pipPlaceholder.style.display='none';
+        subVisible=true;
+        btnSwitch.style.display='inline-flex';
+    }
+});
+inputSub.addEventListener('keydown',e=>{if(e.key==='Enter')btnStartSub.click();});
+
+/* ================= 切换主/副 ================= */
+btnSwitch.addEventListener('click',()=>{
+    if(!subVisible) return;
+    window.__RTC_LOGGER__.i('UI','switch main/sub');
+    bigPlayer.setPip(true);
+    smallPlayer.setPip(false);
+
+    const bigCanvas=bigPlayer.canvas;
+    const smallCanvas=smallPlayer.canvas;
+    const bigBefore=bigCanvas.getBoundingClientRect();
+    const smallBefore=smallCanvas.getBoundingClientRect();
+
+    slotMain.appendChild(smallCanvas);
+    slotPip.appendChild(bigCanvas);
+
+    const prev=bigPlayer;
+    bigPlayer=smallPlayer;
+    smallPlayer=prev;
+
+    const bigAfter=smallCanvas.getBoundingClientRect();
+    const smallAfter=bigCanvas.getBoundingClientRect();
+
+    applyFlip(bigCanvas,smallBefore,smallAfter);
+    applyFlip(smallCanvas,bigBefore,bigAfter);
+
+    refreshVolumeUI();
+    refreshModeIcon();
+    updateInfoPanel();
+
+    if(!pipUserMoved){
+        const s=smallPlayer.getStats();
+        if(s.width&&s.height){
+            adjustPipSize(s.width,s.height,smallPlayer.getRotation());
+            ensurePipInBounds(true);
+        }
+    }
+});
+function applyFlip(canvas,before,after){
+    const dx=before.left-after.left;
+    const dy=before.top-after.top;
+    const sx=before.width/after.width;
+    const sy=before.height/after.height;
+    canvas.classList.add('swap-anim');
+    canvas.style.transformOrigin='0 0';
+    canvas.style.transform=`translate(${dx}px,${dy}px) scale(${sx},${sy})`;
+    requestAnimationFrame(()=>{
+        canvas.style.transform='translate(0,0) scale(1,1)';
+        canvas.addEventListener('transitionend',function handler(){
+            canvas.classList.remove('swap-anim');
+            canvas.style.transform='';
+            canvas.removeEventListener('transitionend',handler);
+        });
+    });
+}
+
+/* ================= 小窗拖动（transform 防闪烁） ================= */
+(function enablePipDrag(){
+    let dragging=false,startX,startY,origLeft,origTop;
+    slotPip.addEventListener('mousedown',e=>{
+        if(!subVisible) return;
+        dragging=true; pipUserMoved=true;
+        slotPip.classList.add('dragging');
+        const vc=container.getBoundingClientRect();
+        const rect=slotPip.getBoundingClientRect();
+        origLeft=rect.left-vc.left; origTop=rect.top-vc.top;
+        startX=e.clientX; startY=e.clientY;
+        if(!slotPip.style.left && !slotPip.style.top){
+            slotPip.style.left=origLeft+'px';
+            slotPip.style.top=origTop+'px';
+            slotPip.style.right='auto'; slotPip.style.bottom='auto';
+        }
+        e.preventDefault();
+    });
+    window.addEventListener('mousemove',e=>{
+        if(!dragging) return;
+        const vc=container.getBoundingClientRect();
+        const dx=e.clientX-startX, dy=e.clientY-startY;
+        const pipW=slotPip.offsetWidth, pipH=slotPip.offsetHeight;
+        let newLeft=origLeft+dx, newTop=origTop+dy;
+        if(newLeft<0)newLeft=0;
+        if(newTop<0)newTop=0;
+        if(newLeft+pipW>vc.width)newLeft=vc.width-pipW;
+        if(newTop+pipH>vc.height)newTop=vc.height-pipH;
+        slotPip.style.transform=`translate(${newLeft-origLeft}px,${newTop-origTop}px)`;
+    });
+    window.addEventListener('mouseup',()=>{
+        if(!dragging) return;
+        dragging=false;
+        slotPip.classList.remove('dragging');
+        const vc=container.getBoundingClientRect();
+        const rect=slotPip.getBoundingClientRect();
+        const finalLeft=rect.left-vc.left;
+        const finalTop=rect.top-vc.top;
+        slotPip.style.transform='';
+        slotPip.style.left=finalLeft+'px';
+        slotPip.style.top=finalTop+'px';
+        slotPip.style.right='auto'; slotPip.style.bottom='auto';
+        ensurePipInBounds(true);
+    });
+})();
+
+/* ================= 保证小窗在范围内（全屏退出调用） ================= */
+function ensurePipInBounds(forceReanchor){
+    if(!subVisible) return;
+    const vc=container.getBoundingClientRect();
+    const rect=slotPip.getBoundingClientRect();
+
+    const usingDefault = (!slotPip.style.left && !slotPip.style.top);
+    if(usingDefault){
+        if(forceReanchor && (rect.left>vc.right || rect.top>vc.bottom || rect.right<vc.left || rect.bottom<vc.top ||
+           rect.right>vc.right || rect.bottom>vc.bottom)){
+            slotPip.style.left=Math.max(vc.width - rect.width - 16,0)+'px';
+            slotPip.style.top =Math.max(vc.height - rect.height - 96,0)+'px';
+            slotPip.style.right='auto'; slotPip.style.bottom='auto';
+        }
+        return;
+    }
+
+    let left=parseFloat(slotPip.style.left)||0;
+    let top =parseFloat(slotPip.style.top)||0;
+    let changed=false;
+    if(left+rect.width>vc.width){left=vc.width-rect.width; changed=true;}
+    if(top+rect.height>vc.height){top=vc.height-rect.height; changed=true;}
+    if(left<0){left=0; changed=true;}
+    if(top<0){top=0; changed=true;}
+    if(changed){
+        slotPip.style.left=left+'px';
+        slotPip.style.top=top+'px';
+    }
+}
+
+/* ================= 初始化 UI ================= */
+refreshModeIcon();
+refreshVolumeUI();
+setTimeout(()=>container.classList.remove('show-controls'),2000);
+
+/* ================= 默认 URL & Query ================= */
+const query=parse_query_string();
+window.__RTC_LOGGER__.i('ENV','Query params =', query);
+srs_init_rtc("#txt_url", query);
+if(!inputMain.value){
+    const defaultUrl=document.getElementById('txt_url').value;
+    window.__RTC_LOGGER__.i('ENV','Default URL from srs_init_rtc =', defaultUrl);
+    if(defaultUrl) inputMain.value=defaultUrl;
+}
+if(query.sub){ inputSub.value=decodeURIComponent(query.sub); }
+if(query.autostart==='true' && inputMain.value){
+    window.__RTC_LOGGER__.i('ENV','Autostart main with URL =', inputMain.value.trim());
+    playerA.play(inputMain.value.trim());
+}
+
+/* ================= 键盘辅助 ================= */
+document.addEventListener('keydown',e=>{
+    if(e.code==='Space'){e.preventDefault();showControls(true);}
+});
+
+/* ================= 信息面板刷新 ================= */
+setInterval(updateInfoPanel,1000);
+</script>
+</body>
+</html>

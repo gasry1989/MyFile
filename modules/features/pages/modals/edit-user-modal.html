@@ -1,0 +1,100 @@
+<!doctype html>
+<html><head><meta charset="utf-8"></head><body>
+  <template id="tpl-edit-user-modal">
+    <style>
+      .edit-user-modal.fixed-size-modal,
+      .edit-user-modal.fixed-size-modal .modal-body,
+      .edit-user-modal.fixed-size-modal .modal-form { height:100%; overflow:hidden; box-sizing:border-box; }
+      .edit-user-modal .user-form.no-scroll { display:flex; flex-direction:column; height:100%; overflow:hidden; padding:10px 14px 12px; box-sizing:border-box; gap:10px; }
+      .edit-user-modal .content-scroll-lock { flex:1; display:flex; flex-direction:column; gap:10px; min-height:0; overflow:auto; }
+
+      .edit-user-modal .form-row { display:flex; align-items:center; gap:14px; min-height:40px; }
+      .edit-user-modal .form-row .form-label { flex:0 0 110px; text-align:left; font-size:13px; color:#c8d0d7; line-height:1.2; }
+      .edit-user-modal .form-row .form-field { flex:1; display:flex; align-items:center; gap:8px; min-width:0; }
+
+      /* 统一深色输入/下拉样式 */
+      .edit-user-modal input, .edit-user-modal select, .edit-user-modal textarea {
+        width:100%; box-sizing:border-box; background:#161b21; border:1px solid #2c343c; border-radius:4px; color:#fff;
+        padding:6px 10px; font-size:13px; outline:none; transition:border-color .15s;
+      }
+      .edit-user-modal select { min-height:32px; appearance:none; background-image:linear-gradient(45deg,transparent 50%,#9fb1bb 50%),linear-gradient(135deg,#9fb1bb 50%,transparent 50%);
+        background-position: calc(100% - 18px) calc(50% - 3px), calc(100% - 12px) calc(50% - 3px);
+        background-size:6px 6px, 6px 6px; background-repeat:no-repeat; padding-right:28px;
+      }
+      .edit-user-modal input:focus, .edit-user-modal select:focus, .edit-user-modal textarea:focus { border-color:#3d78d4; }
+      .edit-user-modal input:disabled, .edit-user-modal select:disabled, .edit-user-modal textarea:disabled { opacity:.7; cursor:not-allowed; }
+
+      .edit-user-modal .region-group { display:flex; gap:12px; width:100%; }
+      .edit-user-modal .region-group select { flex:1; }
+      .edit-user-modal .form-row-remark { display:flex; flex-direction:column; gap:6px; }
+      .edit-user-modal .form-row-remark .form-label { text-align:left; font-size:13px; color:#c8d0d7; }
+
+      .edit-user-modal textarea { resize:vertical; overflow-y:auto; overflow-x:hidden; min-height:110px; max-height:240px; line-height:1.4; font-size:13px; }
+
+      .edit-user-modal .parent-search-list { margin-top:6px; max-height:180px; overflow-y:auto; overflow-x:hidden; border:1px solid #2d373f; border-radius:4px; background:#141c23; font-size:13px; }
+      .edit-user-modal .parent-search-list { scrollbar-width:thin; scrollbar-color:#33424d #141b20; }
+      .edit-user-modal .parent-search-list::-webkit-scrollbar { width:8px; height:8px; }
+      .edit-user-modal .parent-search-list::-webkit-scrollbar-track { background:#141b20; }
+      .edit-user-modal .parent-search-list::-webkit-scrollbar-thumb { background:#33424d; border-radius:4px; }
+      .edit-user-modal .parent-search-list::-webkit-scrollbar-thumb:hover { background:#415464; }
+
+      .edit-user-modal .hint { font-size:12px; color:#7d8891; margin-top:4px; }
+      .edit-user-modal .bottom-actions { display:flex; justify-content:flex-end; gap:12px; padding-top:8px; border-top:1px solid #1f252b; flex-shrink:0; }
+      .btn.btn-primary { background:#0b84d8; border-color:#0b84d8; color:#fff; }
+    </style>
+
+    <div class="modal-form edit-user-modal fixed-size-modal">
+      <form id="editUserForm" class="user-form no-scroll" autocomplete="off">
+        <div class="content-scroll-lock">
+          <input type="hidden" name="userId" value="">
+          <input type="hidden" name="parentUserId" value="0"/>
+
+          <div class="form-row">
+            <div class="form-label">用户角色 <span class="req">*</span></div>
+            <div class="form-field"><select name="roleId" id="roleSelect" required></select></div>
+          </div>
+
+          <div class="form-row">
+            <div class="form-label">登录账号</div>
+            <div class="form-field"><input name="account" id="euAccount" disabled /></div>
+          </div>
+
+          <div class="form-row">
+            <div class="form-label">用户名 <span class="req">*</span></div>
+            <div class="form-field"><input name="name" id="nameInput" required minlength="2" maxlength="32"/></div>
+          </div>
+
+          <div class="form-row">
+            <div class="form-label">地区</div>
+            <div class="form-field region-group">
+              <select name="provinceId" id="provinceSel"></select>
+              <select name="cityId" id="citySel"></select>
+              <select name="zoneId" id="zoneSel"></select>
+            </div>
+          </div>
+
+          <div class="form-row" id="parentUserRow" style="display:none;">
+            <div class="form-label">所属账号 <span class="req">*</span></div>
+            <div class="form-field">
+              <div style="flex:1;display:flex;flex-direction:column;gap:4px;">
+                <input id="parentUserInput" placeholder="搜索总帐号 (roleId=2)"/>
+                <div id="parentSearchResult" class="parent-search-list"></div>
+                <div class="hint">仅可选择总帐号；显示: userId 账号 用户名</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="form-row-remark">
+            <div class="form-label">备注</div>
+            <div class="form-field"><textarea name="memo" id="euMemo" maxlength="200" placeholder="不超过200字"></textarea></div>
+          </div>
+        </div>
+
+        <div class="bottom-actions">
+          <button type="submit" class="btn btn-primary">确认</button>
+          <button type="button" class="btn" data-close>取消</button>
+        </div>
+      </form>
+    </div>
+  </template>
+</body></html>

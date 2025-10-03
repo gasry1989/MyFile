@@ -1,0 +1,16 @@
+<!doctype html>
+<html><head><meta charset="utf-8"></head><body>
+  <template id="tpl-map-view">
+    <style>
+      :host { all: initial; contain: content; display:block; width:100%; height:100%; }
+      *,*::before,*::after{ box-sizing:border-box; }
+      .wrap { width:100%; height:100%; position:relative; background:#0a0f14; }
+      iframe { position:absolute; inset:0; width:100%; height:100%; border:0; display:block; background:#0a0f14; }
+      .hint { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; color:#9fb1bb; font-size:13px; pointer-events:none; }
+    </style>
+    <div class="wrap">
+      <iframe id="mvIframe"></iframe>
+      <div class="hint" id="mvHint" style="display:none;"></div>
+    </div>
+  </template>
+</body></html>

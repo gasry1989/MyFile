@@ -1,0 +1,197 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8"/>
+  <title>视频详情</title>
+  <!-- 补充：加入与设备详情页一致的 importmap，解决 @api/@core 等别名无法解析问题 -->
+  <script type="importmap">
+  {
+    "imports": {
+      "@config/": "/config/",
+      "@core/": "/modules/core/",
+      "@api/": "/modules/api/",
+      "@state/": "/modules/state/",
+      "@features/": "/modules/features/",
+      "@ui/": "/modules/ui/",
+      "@utils/": "/modules/utils/",
+      "@ws/": "/modules/ws/",
+      "@layout/": "/modules/layout/"
+    }
+  }
+  </script>
+  <script src="/js/adapter-7.4.0.min.js"></script>
+  <script src="/js/srs.sdk.js"></script>
+  <script src="/js/winlin.utility.js"></script>
+  <script src="/js/srs.page.js"></script>
+  <style>
+    html,body{height:100%;margin:0;background:#000;color:#e6f0ff;font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial;overflow:hidden;}
+    *{box-sizing:border-box;}
+    .layout{position:absolute;inset:48px 0 0 0;display:grid;grid-template-columns:1fr 340px;}
+    .videoPane{position:relative;background:#000;}
+    #video_container{position:absolute;inset:0;background:#000;overflow:hidden;user-select:none;border:none;}
+    :fullscreen #video_container,#video_container:fullscreen{width:100vw !important;height:100vh !important;}
+    .slot{position:absolute;top:0;left:0;}
+    .slot.main{width:100%;height:100%;z-index:1;}
+    .slot.pip{
+      width:260px;height:146px;z-index:3;
+      right:16px;bottom:96px;left:auto;top:auto;
+      border:2px solid rgba(255,255,255,.35);border-radius:4px;
+      box-shadow:0 4px 14px rgba(0,0,0,.6);
+      overflow:hidden;cursor:move;background:#000;
+      will-change:transform;display:none;
+    }
+    .slot.dragging{pointer-events:none;}
+    .slot canvas,.slot video{position:absolute;top:0;left:0;width:100%;height:100%;}
+    .slot video{opacity:0;pointer-events:none;}
+    #pip_placeholder{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);font-size:12px;color:#bbb;text-align:center;pointer-events:none;}
+    .controls-overlay{position:absolute;left:0;right:0;bottom:0;padding:6px 10px 10px;display:flex;justify-content:space-between;align-items:flex-end;background:linear-gradient(to top,rgba(0,0,0,.7),rgba(0,0,0,0));opacity:0;pointer-events:none;transition:opacity .25s;z-index:5;}
+    #video_container.show-controls .controls-overlay{opacity:1;pointer-events:auto;}
+    .left-controls,.right-controls{display:flex;align-items:center;gap:10px;}
+    .ctrl-btn{width:34px;height:34px;background:rgba(255,255,255,.12);border:none;color:#fff;border-radius:5px;display:flex;justify-content:center;align-items:center;cursor:pointer;position:relative;padding:0;transition:background .2s;}
+    .ctrl-btn:hover{background:rgba(255,255,255,.32);}
+    .ctrl-btn svg{width:20px;height:20px;fill:#fff;pointer-events:none;}
+    .ctrl-btn[data-tip]:hover:after{content:attr(data-tip);position:absolute;bottom:110%;left:50%;transform:translateX(-50%);background:rgba(0,0,0,.75);padding:3px 6px;font-size:11px;border-radius:3px;white-space:nowrap;pointer-events:none;}
+    .volume-group{display:flex;align-items:center;position:relative;}
+    .volume-slider{width:120px;margin-left:6px;opacity:0;visibility:hidden;transition:opacity .25s;}
+    .volume-group:hover .volume-slider,.volume-slider:hover{opacity:1;visibility:visible;}
+    .volume-slider input[type=range]{width:100%;height:6px;background:#444;border-radius:3px;-webkit-appearance:none;appearance:none;outline:none;}
+    .volume-slider input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;height:14px;background:#fff;border-radius:50%;cursor:pointer;}
+    .volume-slider input[type=range]::-moz-range-thumb{width:14px;height:14px;background:#fff;border-radius:50%;border:none;cursor:pointer;}
+    #info_panel{position:absolute;top:12px;left:12px;background:rgba(0,0,0,.55);padding:10px 14px;font-size:12px;line-height:1.5;border-radius:6px;min-width:200px;max-width:340px;display:none;z-index:6;backdrop-filter:blur(2px);white-space:nowrap;}
+    #info_panel h4{margin:0 0 4px;font-size:13px;font-weight:600;}
+    .info-row{display:flex;justify-content:space-between;gap:14px;}
+    .badge-role{display:inline-block;padding:1px 6px;font-size:10px;background:#2d8cff;border-radius:10px;margin-left:6px;vertical-align:middle;}
+    .badge-role.secondary{background:#888;}
+    @media (max-width:900px){
+      .layout{grid-template-columns:1fr 300px;}
+      .slot.pip{width:180px;height:101px;}
+    }
+    .side{border-left:1px solid #1f2a3a;padding:12px;overflow:auto;font-size:13px;line-height:1.6;}
+    .blk{border-bottom:1px solid #1e2b38;padding:10px 4px 14px;display:none;}
+    .blk:last-child{border-bottom:none;}
+    .blk h4{margin:0 0 8px;font-size:13px;font-weight:600;color:#b7d9ff;}
+    .row{display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin:6px 0;}
+    .sep{height:6px;}
+    .radios{display:flex;align-items:center;gap:12px;}
+    .radios label{display:flex;align-items:center;gap:4px;cursor:pointer;}
+    .zoom-box{display:flex;align-items:center;gap:12px;}
+    .zoom-btn{width:42px;height:38px;background:#0f3552;color:#fff;border:1px solid #1e5178;border-radius:6px;cursor:pointer;font-size:20px;font-weight:600;display:flex;align-items:center;justify-content:center;}
+    .zoom-btn:active{background:#196092;}
+    .zoom-multi{min-width:44px;text-align:center;font-weight:600;}
+    .dir-pad{width:160px;display:grid;grid-template-columns:repeat(3,52px);grid-template-rows:repeat(3,52px);gap:4px;justify-content:center;align-items:center;}
+    .dir-btn{width:52px;height:52px;background:#123347;border:1px solid #1d4f6e;border-radius:8px;cursor:pointer;position:relative;background-size:60% 60%;background-position:center;background-repeat:no-repeat;}
+    .dir-btn:active{filter:brightness(1.15);}
+    .btn{background:#1f7fb8;border:1px solid rgba(255,255,255,.25);color:#fff;border-radius:6px;padding:6px 14px;cursor:pointer;font-weight:600;white-space:nowrap;font-size:13px;}
+    .btn:active{filter:brightness(.9);}
+    select, .ti-modal select, .ti-modal input[type=number]{background:#102231;color:#e6f0ff;border:1px solid #2b475f;border-radius:4px;padding:4px 6px;font-size:13px;}
+    .hidden{display:none !important;}
+    .ti-mask{position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:999;display:flex;align-items:center;justify-content:center;}
+    .ti-modal{background:#11202c;border:1px solid #2b4558;border-radius:8px;min-width:420px;max-width:520px;padding:16px 18px;font-size:13px;color:#dde9f5;box-shadow:0 8px 28px rgba(0,0,0,.55);}
+    .ti-modal h3{margin:0 0 12px;font-size:15px;font-weight:600;color:#bfe2ff;}
+    .ti-form{display:grid;grid-template-columns:140px 1fr;row-gap:10px;column-gap:8px;align-items:center;}
+    .ti-form label{justify-self:end;white-space:nowrap;color:#90b4c8;}
+    .ti-actions{margin-top:16px;display:flex;justify-content:flex-end;gap:12px;}
+    .ti-radio-group{display:flex;align-items:center;gap:14px;}
+    .note{font-size:11px;color:#8aa5b6;}
+    .warn{color:#ffb46c;font-size:12px;margin-top:4px;}
+  </style>
+</head>
+<body>
+  <div class="layout">
+    <div class="videoPane">
+      <div id="video_container">
+        <div id="info_panel"></div>
+        <div class="slot main" id="slot_main"></div>
+        <div class="slot pip" id="slot_pip">
+          <div id="pip_placeholder">副流小窗</div>
+        </div>
+        <div class="controls-overlay" id="controls_overlay">
+          <div class="left-controls">
+            <div class="volume-group">
+              <button class="ctrl-btn" id="btn_mute" data-tip="音量/静音">
+                <svg id="icon_volume" viewBox="0 0 24 24"><path d="M3 10v4h4l5 5V5L7 10H3zm13.5 2c0-1.77-1.02-3.29-2.5-4.03v8.06c1.48-.74 2.5-2.26 2.5-4.03z"/></svg>
+                <svg id="icon_volume_off" viewBox="0 0 24 24" style="display:none"><path d="M16.5 12c0 1.77-1.02 3.29-2.5 4.03V7.97c1.48.74 2.5 2.26 2.5 4.03zM4.27 3 3 4.27 7.73 9H3v6h4l5 5v-6.73l4.25 4.26c-.67.52-1.42.93-2.25 1.17v2.07c1.38-.32 2.63-.99 3.68-1.92L19.73 21 21 19.73 4.27 3zM14 3.23v2.06c2.89.86 5 3.54 5 6.71 0 1.05-.25 2.05-.69 2.94l1.53 1.53A9.822 9.822 0 0 0 21 12c0-4.17-2.89-7.85-7-8.77z"/></svg>
+              </button>
+              <div class="volume-slider"><input id="volume_slider" type="range" min="0" max="1" step="0.01" value="1"></div>
+            </div>
+          </div>
+          <div class="right-controls">
+            <button class="ctrl-btn" id="btn_switch" data-tip="切换主/副画面" style="display:none;">
+              <svg viewBox="0 0 24 24"><path d="M4 18h7v-2H6V6H4v12zm16-2V4H11v12h9zm0 2h-9v2h11V6h-2v12z"/></svg>
+            </button>
+            <button class="ctrl-btn" id="btn_info" data-tip="信息">
+              <svg viewBox="0 0 24 24"><path d="M11 7h2v2h-2V7zm0 4h2v6h-2v-6zm1-9C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2z"/></svg>
+            </button>
+            <button class="ctrl-btn" id="btn_rotate" data-tip="旋转90°">
+              <svg viewBox="0 0 24 24"><path d="M12 6v3l4-4-4-4v3c-4.42 0-8 3.58-8 8 0 1.57.46 3.03 1.24 4.26l1.46-1.46A5.97 5.97 0 0 1 6 12c0-3.31 2.69-6 6-6zm6.76 1.74-1.46 1.46c.47.89.7 1.9.7 2.8 0 3.31-2.69 6-6 6v-3l-4 4 4 4v-3c4.42 0 8-3.58 8-8 0-1.57-.46-3.03-1.24-4.26z"/></svg>
+            </button>
+            <button class="ctrl-btn" id="btn_fit_fill" data-tip="自适应/填充">
+              <svg id="icon_fit" viewBox="0 0 24 24"><path d="M4 4h7v2H6v5H4V4zm16 0v7h-2V6h-5V4h7zm0 16h-7v-2h5v-5h2v7zM4 20v-7h2v5h5v2H4z"/></svg>
+              <svg id="icon_fill" viewBox="0 0 24 24" style="display:none"><path d="M7 7h10v10H7z"/><path d="M5 5v14h14V5H5zm12 12H7V7h10v10z"/></svg>
+            </button>
+            <button class="ctrl-btn" id="btn_fullscreen" data-tip="全屏">
+              <svg id="icon_fullscreen" viewBox="0 0 24 24"><path d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zm-3-12v2h3v3h2V5h-5z"/></svg>
+              <svg id="icon_fullscreen_exit" viewBox="0 0 24 24" style="display:none"><path d="M5 16h3v3h2v-5H5v2zm3-8H5v2h5V5H8v3zm6 11h2v-3h3v-2h-5v5zm2-11V5h-2v5h5V8h-3z"/></svg>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="side" id="sidePanel">
+      <div class="blk" id="blkZoom">
+        <h4>缩放控制</h4>
+        <div class="row radios" id="zoomCamRadios">
+          <label><input type="radio" name="zoomCamera" value="0" checked> 主摄像头</label>
+          <label id="zoomCamSubWrap" style="display:none;"><input type="radio" name="zoomCamera" value="1"> 副摄像头</label>
+        </div>
+        <div class="row zoom-box">
+          <button class="zoom-btn" id="btnZoomPlus">+</button>
+          <div class="zoom-multi" id="zoomMultiple">X1</div>
+          <button class="zoom-btn" id="btnZoomMinus">-</button>
+        </div>
+      </div>
+      <div class="blk" id="blkRotate">
+        <h4>旋转控制</h4>
+        <div class="dir-pad">
+          <div></div>
+          <div class="dir-btn" id="btnRotUp"    data-dir="1"></div>
+          <div></div>
+          <div class="dir-btn" id="btnRotLeft"  data-dir="3"></div>
+          <div></div>
+          <div class="dir-btn" id="btnRotRight" data-dir="4"></div>
+          <div></div>
+          <div class="dir-btn" id="btnRotDown"  data-dir="2"></div>
+          <div></div>
+        </div>
+      </div>
+      <div class="blk" id="blkLight">
+        <h4>灯光控制</h4>
+        <div class="row radios">
+          <label><input type="radio" name="lightCtrl" value="0"> 开</label>
+          <label><input type="radio" name="lightCtrl" value="1"> 高亮</label>
+          <label><input type="radio" name="lightCtrl" value="2"> 关</label>
+        </div>
+      </div>
+      <div class="blk" id="blkThermal">
+        <h4>热成像</h4>
+        <div class="row">
+          <span>伪彩模式切换:</span>
+          <select id="pseudoSel" style="min-width:140px;"></select>
+          <button class="btn" id="btnPseudoNext">下一个</button>
+        </div>
+        <div class="row">
+          <span>参数:</span>
+          <button class="btn" id="btnTiParams">参数配置</button>
+        </div>
+      </div>
+      <div class="blk" id="blkSwitch">
+        <h4>切换控制</h4>
+        <div class="row">
+          <button class="btn" id="btnProbeSwitch">切换</button>
+        </div>
+      </div>
+    </div>
+  </div>
+  <script type="module" src="./video-detail.js"></script>
+</body>
+</html>

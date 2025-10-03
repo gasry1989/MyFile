@@ -1,0 +1,70 @@
+<!doctype html>
+<html><head><meta charset="utf-8"></head><body>
+  <template id="tpl-data-center-page">
+    <style>
+      .dc-root{
+        position:absolute;inset:0;display:flex;min-width:0;min-height:0;background:#0d1216;color:#cfd8dc;
+        --dc-row-body-h: 220px;
+        overflow-anchor:none;
+      }
+      .dc-root.left-collapsed .dc-tree-handle{display:flex;}
+
+      .dc-left{width:320px;min-width:240px;max-width:50vw;display:flex;flex-direction:column;min-height:0;border-right:1px solid rgba(255,255,255,.08);position:relative;z-index:10;flex:0 0 auto;transition:none}
+      .dc-left.collapsed{width:0!important;min-width:0!important;border-right:none;overflow:hidden}
+      .dc-splitter{width:12px;cursor:col-resize;position:relative;z-index:10;background:transparent}
+      .dc-splitter:hover{background:rgba(255,255,255,.04)}
+      .dc-left.collapsed + .dc-splitter{width:0!important;cursor:default;background:transparent}
+
+      /* 树折叠按钮 */
+      .dc-tree-toggle{position:absolute;top:6px;right:6px;width:24px;height:24px;display:flex;align-items:center;justify-content:center;background:#1e272f;color:#cfd8dc;border:1px solid #2b3741;border-radius:4px;cursor:pointer;z-index:30}
+      .dc-tree-toggle:hover{background:#27323a}
+      .dc-tree-handle{position:absolute;top:56px;left:6px;width:24px;height:28px;display:none;align-items:center;justify-content:center;background:#1e272f;color:#cfd8dc;border:1px solid #2b3741;border-radius:4px;cursor:pointer;z-index:40}
+      .dc-tree-handle:hover{background:#27323a}
+
+      .dc-center{flex:1 1 auto;display:grid;grid-template-rows:auto 1fr;min-width:0;min-height:0}
+      .dc-toolbar{display:flex;align-items:center;justify-content:space-between;padding:8px 10px;background:#0b121a;border-bottom:1px solid rgba(255,255,255,.08)}
+      .dc-list{position:relative;overflow:auto;padding:10px;min-height:0}
+      .dc-list{scrollbar-width:thin;scrollbar-color:#33424d #141b20}
+      .dc-list::-webkit-scrollbar{width:8px;height:8px}
+      .dc-list::-webkit-scrollbar-track{background:#141b20}
+      .dc-list::-webkit-scrollbar-thumb{background:#33424d;border-radius:4px}
+      .dc-list::-webkit-scrollbar-thumb:hover{background:#415464}
+
+      .dc-row{border:1px solid rgba(255,255,255,.08);border-radius:6px;overflow:hidden;background:#0b1118;margin:0 0 10px}
+      .dc-row-hd{display:flex;align-items:center;gap:12px;padding:8px 10px;background:#0f1b27;border-bottom:1px solid rgba(255,255,255,.08)}
+      .dc-row-hd .meta{display:flex;gap:12px;font-size:12px;color:#bcd}
+      .dc-row-hd .title{font-weight:600}
+      .dc-row-hd .spacer{flex:1 1 auto}
+      .dc-row-hd [data-close]{width:22px;height:22px;border:none;background:transparent;color:#ccd;cursor:pointer}
+      .dc-row-hd [data-close]:hover{color:#fff}
+
+      .dc-row-bd{
+        display:grid;grid-template-columns:repeat(3,1fr);gap:8px;padding:8px;
+        height:var(--dc-row-body-h);
+        min-height:0;
+      }
+      .dc-thumb{
+        position:relative;background:#000;border:1px solid #3a4854;border-radius:6px;
+        height:100%;
+        display:flex;align-items:center;justify-content:center;overflow:hidden
+      }
+      .dc-thumb .clickable{position:absolute;inset:0;cursor:pointer}
+      .dc-thumb .label{position:absolute;top:6px;left:8px;font-size:12px;color:#9ec3ff}
+    </style>
+
+    <div class="dc-root" id="dcRoot">
+      <div class="dc-left" id="dcLeft">
+        <button type="button" id="dcTreeToggle" class="dc-tree-toggle" title="折叠树状栏">«</button>
+      </div>
+      <div class="dc-splitter" id="dcSplitter" title="拖动调整左侧宽度"></div>
+      <button type="button" id="dcTreeHandle" class="dc-tree-handle" title="展开树状栏">»</button>
+
+      <div class="dc-center">
+        <div class="dc-toolbar">
+          <div>数据中心（最多 20 个设备）</div>
+        </div>
+        <div id="dcList" class="dc-list"></div>
+      </div>
+    </div>
+  </template>
+</body></html>

@@ -1,0 +1,113 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8"/>
+  <title>音频模式详情</title>
+  <script type="importmap">
+  {
+    "imports": {
+      "@config/": "/config/",
+      "@core/": "/modules/core/",
+      "@api/": "/modules/api/",
+      "@state/": "/modules/state/",
+      "@features/": "/modules/features/",
+      "@ui/": "/modules/ui/",
+      "@utils/": "/modules/utils/",
+      "@layout/": "/modules/layout/"
+    }
+  }
+  </script>
+  <style>
+    html,body{height:100%;margin:0;background:#000;color:#e6f0ff;font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial;overflow:hidden;}
+    *{box-sizing:border-box;}
+    .wrap{position:absolute;inset:48px 0 0 0;background:#000;display:flex;flex-direction:column;}
+  </style>
+</head>
+<body>
+<script type="module">
+import { mountTopbar, detailBridge, useDetailContext, setupTopbarControls } from './common/detail-common.js';
+import { createModeAudio } from '../modes/ModeAudio.js';
+import { androidWsApi } from '@api/androidWSApi.js';
+import { showToast } from '@ui/toast.js';
+
+const PAGE_MODEL = 3;
+const bridge = detailBridge();
+const ctx = await useDetailContext(bridge, { page:'mode-audio' });
+
+let devIdRaw = ctx.devId ?? null;
+function getDevId(){
+  return ctx.devId!=null && ctx.devId!=='' ? String(ctx.devId)
+       : devIdRaw!=null && devIdRaw!=='' ? String(devIdRaw) : '';
+}
+function getDevIdNum(){
+  const s=getDevId(); if(!s) return null;
+  const n=Number(s); return Number.isFinite(n)? n : null;
+}
+async function waitDevId(ms=3000){
+  const st=Date.now();
+  while(!getDevId()){
+    if(Date.now()-st>ms) break;
+    await new Promise(r=>setTimeout(r,100));
+  }
+  devIdRaw=getDevId()||devIdRaw;
+}
+
+const ui = mountTopbar(document.body);
+/* 替换原：ui.lblDevNo.textContent = ctx.devNo || getDevId() || '设备'; */
+// ui.lblDevNo.textContent = buildTopbarDevLabel(getDevId(), '', ctx.devNo || '');
+
+const topbarHelper = setupTopbarControls({
+  ui,
+  page:'mode-audio',
+  getDevIdNum: ()=>getDevIdNum(),
+  bridge
+});
+
+
+const wrap=document.createElement('div'); wrap.className='wrap';
+document.body.appendChild(wrap);
+
+await waitDevId();
+const idNum = getDevIdNum();
+
+// 传 layout:'detail' 启用 wifi + 耳朵
+const audioHost = createModeAudio({ devId: getDevId(), layout:'detail' });
+wrap.appendChild(audioHost.el);
+audioHost.start && audioHost.start();
+
+/* 可监听耳朵切换事件（自行决定是否调用接口） */
+audioHost.el.addEventListener('headset-toggle', e=>{
+  const { probeId, side, value } = e.detail;
+  console.log('headset-toggle', probeId, side, value);
+  // TODO: 调用后端接口。若失败可回滚：重新拉取或修改内部 state
+});
+/* 顶栏拍照/录像/对讲逻辑已统一，不再在此实现 */
+
+if(idNum!=null){
+  const wsCh = await bridge.wsOpen({ kind:'mode-audio', devId: idNum });
+  topbarHelper.updateWsChannel(wsCh);
+}
+
+// ====== 补丁：音频详情生命周期销毁 ======
+function __safeDisposeAudioDetail(){
+  try { audioHost && audioHost.setOpened && audioHost.setOpened(false); } catch {}
+  try { audioHost && audioHost.destroy && audioHost.destroy(); } catch {}
+}
+
+// beforeunload 在 iframe src 改写 / 关闭 overlay 时触发
+window.addEventListener('beforeunload', __safeDisposeAudioDetail);
+
+// 可选：防止极端情况下 beforeunload 未触发（例如某些强制移除 iframe 的方式）
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'hidden') {
+    // 小延迟以排除短暂切回
+    setTimeout(() => {
+      if (document.visibilityState === 'hidden') {
+        __safeDisposeAudioDetail();
+      }
+    }, 60);
+  }
+});
+</script>
+</body>
+</html>

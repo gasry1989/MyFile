@@ -1,0 +1,86 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8"/>
+  <title>设备详情</title>
+  <!-- 让 @api/@ui 等别名在 iframe 页面里也能解析 -->
+  <script type="importmap">
+  {
+    "imports": {
+      "@config/": "/config/",
+      "@core/": "/modules/core/",
+      "@api/": "/modules/api/",
+      "@state/": "/modules/state/",
+      "@features/": "/modules/features/",
+      "@ui/": "/modules/ui/",
+      "@utils/": "/modules/utils/",
+      "@ws/": "/modules/ws/",
+      "@layout/": "/modules/layout/"
+    }
+  }
+  </script>
+  <style>
+    :root{
+      /* 视频卡片：更小，避免遮住模式区；16:9 外框，内部画面用 fill 铺满 */
+      --card-w-video: clamp(260px, 26vw, 360px);
+      --card-h-video: calc(var(--card-w-video) * 9 / 16);
+
+      --card-w-mode: clamp(300px, 30vw, 420px);
+    }
+
+    html,body{height:100%;margin:0;background:#0a0f14;color:#e6f0ff; font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial; overflow:hidden;}
+    *{box-sizing:border-box;}
+    .main{
+      position:absolute; inset:48px 0 0 0;
+      display:grid; grid-template-columns: 1fr 360px; gap:16px; padding:12px 16px;
+      overflow:hidden;
+    }
+    .left{ overflow:hidden; display:flex; flex-direction:column; gap:12px; min-width:0; min-height:0; }
+    h3{ margin:0; font-weight:700; font-size:14px; color:#cfe3ff; }
+
+    .rail{
+      display:grid;
+      gap:12px;
+      justify-content:start; /* 左对齐 */
+    }
+    .rail.video{ grid-template-columns: repeat(var(--cols, 3), var(--card-w-video)); }
+    .rail.mode {
+      grid-template-columns: repeat(var(--cols, 3), var(--card-w-mode));
+      height: 100%;           /* 模式区吃剩余高度 */
+      align-items: stretch;   /* 模式卡等高 */
+    }
+
+    .section{ display:flex; flex-direction:column; gap:8px; }
+    .section.modes{ flex:1 1 auto; min-height:0; } /* 模式区占满剩余高度 */
+
+    .card{
+      background:#000; border:1px solid #334; border-radius:6px; overflow:hidden;
+      position:relative; display:flex; align-items:center; justify-content:center;
+      width:var(--card-w-video); height:var(--card-h-video);
+    }
+    .card.mode{
+      width:var(--card-w-mode);
+      height: 100%;
+    }
+    .card.blank{ background:transparent; border:none; pointer-events:none; }
+    .card > *, .card .fill{ width:100%; height:100%; display:block; }
+
+    .label{
+      position:absolute; left:8px; top:6px; font-size:12px; color:#cfe3ff; background:rgba(0,0,0,.35);
+      padding:2px 6px; border-radius:4px; border:1px solid rgba(255,255,255,.12);
+      pointer-events:none;
+    }
+
+    .right{
+      border-left:1px solid #22313f; padding-left:16px; overflow:hidden; display:flex; flex-direction:column;
+    }
+    .kv{ display:grid; grid-template-columns:120px 1fr; align-items:center; gap:8px; margin:8px 0; }
+    .btn{background:#1f7fb8;border:1px solid rgba(255,255,255,.25); color:#fff; border-radius:6px; padding:6px 12px; cursor:pointer; font-weight:600; white-space:nowrap;}
+    .btnLine{ display:flex; gap:12px; margin-top:14px; flex-wrap:nowrap; }
+    .hide{ display:none !important; }
+  </style>
+</head>
+<body>
+  <script type="module" src="./device-detail.js"></script>
+</body>
+</html>
