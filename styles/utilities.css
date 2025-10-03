@@ -1,0 +1,22 @@
+/* Utilities: small, composable helpers for consistent UI */
+.text-dim{color:var(--color-text-dim)!important}
+.flex-center{display:flex;align-items:center;justify-content:center}
+.scroll-y{overflow-y:auto}
+.hidden{display:none!important}
+.round-xs{border-radius:var(--radius-xs)!important}
+.round-sm{border-radius:var(--radius-sm)!important}
+.round-md{border-radius:var(--radius-md)!important}
+.round-lg{border-radius:var(--radius-lg)!important}
+.border{border:1px solid var(--color-border)!important}
+.panel-bg{background:var(--color-panel)!important}
+.text-ellipsis{overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+.btn-outline{background:transparent;border:1px solid var(--color-border);color:var(--color-primary);border-radius:var(--radius-sm);padding:6px 12px;font-size:13px}
+.btn-outline:hover{background:rgba(255,255,255,.06)}
+.btn-outline:focus-visible{outline:none;box-shadow:var(--focus-ring)}
+
+/* Unified scrollbars (apply broadly but safe) */
+:root{scrollbar-color:#33424D #141B20}
+*::-webkit-scrollbar{width:10px;height:10px}
+*::-webkit-scrollbar-track{background:#141B20}
+*::-webkit-scrollbar-thumb{background:#33424D;border-radius:6px}
+*::-webkit-scrollbar-thumb:hover{background:#415464}
