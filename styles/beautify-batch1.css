@@ -1,0 +1,51 @@
+/* Batch1: 基础主题美化（仅样式覆盖，不改结构/逻辑） */
+:root {
+  --color-bg:#0B1116;
+  --color-panel:#101B25;
+  --color-border:#1D2B36;
+  --color-primary:#1492FF;
+  --color-primary-hover:#2A9DFF;
+  --color-text:#E6F0FF;
+  --color-text-dim:#9BB3C9;
+  --color-text-weak:#607789;
+  --color-accent-cyan:#11C9D9;
+  --color-hover-bg:rgba(255,255,255,0.05);
+  --color-alarm:#FF4D4F;
+  --color-warn:#FFC53D;
+  --color-ok:#2EFF67;
+  --color-offline:#55626E;
+}
+body{background:var(--color-bg);color:var(--color-text);text-rendering:optimizeLegibility;}
+.app-header{background:linear-gradient(90deg,#141c23,#182732 58%,#1b3140);border-bottom:1px solid var(--color-border);box-shadow:0 1px 2px rgba(0,0,0,.4);}
+.app-header__brand{letter-spacing:.5px;}
+#sidebar,#sideBar{background:var(--color-panel);border-right:1px solid var(--color-border);box-shadow:inset -1px 0 0 rgba(255,255,255,0.04);} 
+.sidebar__nav a{position:relative;transition:background .15s,color .15s;color:var(--color-text-dim);} 
+.sidebar__nav a:hover{background:var(--color-hover-bg);color:var(--color-text);} 
+.sidebar__nav a.active{background:rgba(255,255,255,.06);color:var(--color-text);} 
+.sidebar__nav a.active::before{content:'';position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--color-primary);border-radius:0 2px 2px 0;} 
+#sidebar.collapsed .sidebar__nav a{padding-left:12px;} 
+.main-view{background:var(--color-bg);scrollbar-color:#2d3a44 #10161c;} 
+.main-view::-webkit-scrollbar-track{background:#10161c;} 
+.main-view::-webkit-scrollbar-thumb{background:#2d3a44;border-radius:6px;border:1px solid #182229;} 
+.main-view::-webkit-scrollbar-thumb:hover{background:#384853;} 
+.btn{background:#1d2830;border:1px solid var(--color-border);color:var(--color-text);transition:background .15s,border-color .15s,color .15s;line-height:1.2;} 
+.btn:hover{background:#25323c;} 
+.btn:active{background:#1b242b;} 
+.btn-primary{background:var(--color-primary);border-color:var(--color-primary);color:#fff;box-shadow:0 0 0 1px rgba(255,255,255,0.03),0 2px 4px -1px rgba(0,0,0,.45);} 
+.btn-primary:hover{background:var(--color-primary-hover);} 
+.btn-primary:active{filter:brightness(.92);} 
+.btn-danger{background:#d64f4f;border-color:#d64f4f;} 
+.btn-danger:hover{filter:brightness(1.05);} 
+.btn-xs,.btn-sm{line-height:1.2;} 
+.btn-icon{width:28px;height:28px;padding:0;display:inline-flex;align-items:center;justify-content:center;background:#1d2830;border:1px solid var(--color-border);border-radius:6px;cursor:pointer;transition:background .15s;} 
+.btn-icon:hover{background:#25323c;} .btn-icon:active{background:#1b242b;} 
+.text-weak{color:var(--color-text-weak)!important;} .text-dim{color:var(--color-text-dim)!important;} .text-accent{color:var(--color-primary)!important;} .text-alarm{color:var(--color-alarm)!important;} .text-warn{color:var(--color-warn)!important;} .text-ok{color:var(--color-ok)!important;} .text-offline{color:var(--color-offline)!important;} 
+.tag{display:inline-flex;align-items:center;height:20px;padding:0 8px;border-radius:999px;font-size:11px;line-height:20px;border:1px solid var(--color-border);background:rgba(255,255,255,0.04);color:var(--color-text-dim);gap:4px;font-weight:500;} 
+.tag-online{border-color:rgba(46,204,113,.4);background:rgba(46,204,113,.12);color:#baf5d2;} 
+.tag-offline{border-color:rgba(85,98,110,.5);background:rgba(85,98,110,.15);color:#9aa5ad;} 
+.tag-alarm{border-color:rgba(255,77,79,.55);background:rgba(255,77,79,.14);color:#ffb5b6;} 
+.tag-warn{border-color:rgba(255,197,61,.55);background:rgba(255,197,61,.14);color:#ffe0a6;} 
+.panel-surface{background:var(--color-panel);border:1px solid var(--color-border);border-radius:8px;padding:12px 14px;} 
+.panel-elevated{background:var(--color-panel);border:1px solid var(--color-border);border-radius:10px;box-shadow:0 4px 16px rgba(0,0,0,.5);padding:16px 18px;} 
+.is-active-outline{box-shadow:0 0 0 1px var(--color-primary),0 0 0 3px rgba(20,146,255,.32);border-radius:6px;} 
+a{transition:color .15s;} a:focus-visible{outline:2px solid var(--color-primary);outline-offset:2px;border-radius:4px;}
