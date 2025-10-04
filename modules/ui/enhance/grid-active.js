@@ -1,3 +1,6 @@
+import './modal-skin.js';
+import './normalize-ui.js';
+
 (function(){
   function apply(){
     const root=document.getElementById('mediaGrid');
