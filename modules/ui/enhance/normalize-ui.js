@@ -1,0 +1,1 @@
+UI: add normalize-ui.js to standardize runtime buttons and right panels; apply site-wide
